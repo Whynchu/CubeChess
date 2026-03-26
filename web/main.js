@@ -129,15 +129,16 @@ function createStartingPieces() {
     Blue: { x: 0, y: 0, z: 0, color: 0x48a7ff },
   };
 
+  // Side-adjacent corner cells stay empty; formation points inward.
   const layout = [
     [0, 0, 0],
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-    [1, 1, 0],
-    [1, 0, 1],
-    [0, 1, 1],
     [1, 1, 1],
+    [2, 1, 1],
+    [1, 2, 1],
+    [1, 1, 2],
+    [2, 2, 1],
+    [2, 1, 2],
+    [1, 2, 2],
   ];
 
   const group = new THREE.Group();
@@ -200,3 +201,4 @@ function onResize() {
 window.addEventListener("resize", onResize);
 setStatus("Viewer loaded");
 requestAnimationFrame(animate);
+
