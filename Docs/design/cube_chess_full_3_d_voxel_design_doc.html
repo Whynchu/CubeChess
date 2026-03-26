@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cube Chess — Full 3D Voxel Design Document</title>
+  <style>
+    :root {
+      --bg: #0a0f1a;
+      --panel: rgba(13, 21, 37, 0.88);
+      --panel-2: rgba(20, 31, 54, 0.78);
+      --text: #e8f0ff;
+      --muted: #b9c7e6;
+      --line: rgba(120, 160, 255, 0.18);
+      --accent: #7db0ff;
+      --accent-2: #9d8cff;
+      --yellow: #ffd45c;
+      --red: #ff6c6c;
+      --blue: #66b8ff;
+      --purple: #c287ff;
+      --good: #7ff0b6;
+      --warn: #ffb366;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(125, 176, 255, 0.14), transparent 34%),
+        radial-gradient(circle at top right, rgba(157, 140, 255, 0.10), transparent 28%),
+        linear-gradient(180deg, #09111d 0%, #060b14 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .wrap {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      padding: 56px 0 28px;
+    }
+
+    .hero-card {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(16, 28, 49, 0.94), rgba(8, 14, 25, 0.96));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      padding: 34px;
+    }
+
+    .hero-card::before {
+      content: "";
+      position: absolute;
+      inset: -120px auto auto -120px;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(125,176,255,0.22), transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      inset: auto -100px -100px auto;
+      width: 280px;
+      height: 280px;
+      background: radial-gradient(circle, rgba(157,140,255,0.18), transparent 68%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(125, 176, 255, 0.12);
+      border: 1px solid rgba(125, 176, 255, 0.22);
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.15;
+      margin: 0 0 14px;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 4.6vw, 4rem);
+      max-width: 10ch;
+      letter-spacing: -0.04em;
+    }
+
+    h2 {
+      font-size: clamp(1.4rem, 2.5vw, 2rem);
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+      color: #f5f8ff;
+      margin-top: 22px;
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .subtitle {
+      max-width: 72ch;
+      font-size: 1.06rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.45fr 1fr;
+      gap: 26px;
+      align-items: stretch;
+      margin-top: 24px;
+    }
+
+    .cube-visual,
+    .quick-facts,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .cube-visual {
+      min-height: 320px;
+      position: relative;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .cube-scene {
+      position: relative;
+      width: min(62vw, 330px);
+      height: min(62vw, 330px);
+      transform-style: preserve-3d;
+      transform: rotateX(-24deg) rotateY(-34deg);
+    }
+
+    .cube {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      animation: drift 9s ease-in-out infinite alternate;
+    }
+
+    @keyframes drift {
+      from { transform: rotateY(0deg) rotateX(0deg); }
+      to { transform: rotateY(12deg) rotateX(3deg); }
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      border: 1px solid rgba(145, 188, 255, 0.34);
+      background-image:
+        linear-gradient(rgba(155, 185, 255, 0.16) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(155, 185, 255, 0.16) 1px, transparent 1px);
+      background-size: calc(100% / 8) calc(100% / 8);
+      background-color: rgba(70, 100, 170, 0.08);
+      box-shadow: inset 0 0 22px rgba(130, 180, 255, 0.08);
+    }
+
+    .front { transform: translateZ(165px); }
+    .back { transform: rotateY(180deg) translateZ(165px); }
+    .right { transform: rotateY(90deg) translateZ(165px); }
+    .left { transform: rotateY(-90deg) translateZ(165px); }
+    .top { transform: rotateX(90deg) translateZ(165px); }
+    .bottom { transform: rotateX(-90deg) translateZ(165px); }
+
+    .voxel {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      box-shadow: 0 0 16px currentColor;
+      opacity: 0.95;
+    }
+
+    .voxel::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border: 1px solid currentColor;
+      border-radius: 7px;
+      opacity: 0.45;
+    }
+
+    .v-yellow { color: var(--yellow); background: rgba(255, 212, 92, 0.72); }
+    .v-red { color: var(--red); background: rgba(255, 108, 108, 0.68); }
+    .v-blue { color: var(--blue); background: rgba(102, 184, 255, 0.7); }
+    .v-purple { color: var(--purple); background: rgba(194, 135, 255, 0.7); }
+    .v-white { color: #dbe7ff; background: rgba(219, 231, 255, 0.3); }
+
+    .vf1 { left: 58px; top: 66px; transform: translateZ(30px); }
+    .vf2 { left: 88px; top: 94px; transform: translateZ(18px); }
+    .vf3 { left: 113px; top: 124px; transform: translateZ(6px); }
+    .vf4 { right: 58px; top: 78px; transform: translateZ(22px); }
+    .vf5 { right: 90px; top: 108px; transform: translateZ(10px); }
+    .vf6 { right: 118px; top: 138px; transform: translateZ(0px); }
+    .vf7 { left: 74px; bottom: 86px; transform: translateZ(16px); }
+    .vf8 { left: 104px; bottom: 116px; transform: translateZ(8px); }
+    .vf9 { right: 74px; bottom: 70px; transform: translateZ(16px); }
+    .vf10 { right: 104px; bottom: 100px; transform: translateZ(8px); }
+    .vf11 { left: 152px; top: 150px; transform: translateZ(0px); }
+    .vf12 { left: 176px; top: 122px; transform: translateZ(24px); }
+
+    .legend-row {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(8, 14, 25, 0.72);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .quick-facts {
+      padding: 22px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .fact {
+      padding: 14px 14px 12px;
+      border-radius: 16px;
+      background: var(--panel-2);
+      border: 1px solid rgba(130, 170, 255, 0.12);
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+      color: #f3f7ff;
+    }
+
+    .fact span {
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .toc {
+      padding: 10px 0 26px;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .toc a {
+      display: block;
+      text-decoration: none;
+      color: var(--text);
+      background: rgba(14, 22, 39, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+      transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+    }
+
+    .toc a:hover {
+      transform: translateY(-2px);
+      border-color: rgba(125, 176, 255, 0.42);
+      background: rgba(18, 29, 50, 0.88);
+    }
+
+    .toc small {
+      display: block;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    main {
+      padding-bottom: 54px;
+    }
+
+    section {
+      margin: 0 0 18px;
+    }
+
+    .panel {
+      padding: 28px;
+    }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .card {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(20, 31, 54, 0.62);
+      border: 1px solid rgba(130, 170, 255, 0.12);
+    }
+
+    ul {
+      margin: 10px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      margin-top: 10px;
+    }
+
+    th, td {
+      padding: 14px 15px;
+      text-align: left;
+      border-bottom: 1px solid rgba(120, 160, 255, 0.12);
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(18, 31, 56, 0.9);
+      color: #f5f8ff;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    td {
+      color: var(--muted);
+      background: rgba(10, 17, 29, 0.48);
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .mini-tag {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      background: rgba(125, 176, 255, 0.12);
+      border: 1px solid rgba(125, 176, 255, 0.18);
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .player-yellow { color: var(--yellow); }
+    .player-red { color: var(--red); }
+    .player-blue { color: var(--blue); }
+    .player-purple { color: var(--purple); }
+    .good { color: var(--good); }
+    .warn { color: var(--warn); }
+
+    .footer-note {
+      padding: 22px 0 50px;
+      color: #94a6cc;
+      font-size: 0.95rem;
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .hero-grid,
+      .grid-3,
+      .toc-grid,
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .cube-visual {
+        min-height: 280px;
+      }
+
+      .cube-scene {
+        width: min(72vw, 300px);
+        height: min(72vw, 300px);
+      }
+
+      .front, .back, .right, .left, .top, .bottom {
+        transform-origin: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-card">
+        <div class="eyebrow">Design Document · Version 4</div>
+        <h1>Cube Chess — Full 3D Voxel Occupation System</h1>
+        <p class="subtitle">
+          A 4-player spatial strategy game played inside an 8×8×8 cubic battlefield. Every piece occupies a full voxel cell, movement is resolved through true three-axis space, and the camera exists to help players read the board instead of fighting them like a caffeinated shopping cart.
+        </p>
+
+        <div class="hero-grid">
+          <div class="cube-visual">
+            <div class="cube-scene">
+              <div class="cube">
+                <div class="face front"></div>
+                <div class="face back"></div>
+                <div class="face right"></div>
+                <div class="face left"></div>
+                <div class="face top"></div>
+                <div class="face bottom"></div>
+
+                <div class="voxel v-yellow vf1"></div>
+                <div class="voxel v-yellow vf2"></div>
+                <div class="voxel v-yellow vf3"></div>
+                <div class="voxel v-red vf4"></div>
+                <div class="voxel v-red vf5"></div>
+                <div class="voxel v-red vf6"></div>
+                <div class="voxel v-blue vf7"></div>
+                <div class="voxel v-blue vf8"></div>
+                <div class="voxel v-purple vf9"></div>
+                <div class="voxel v-purple vf10"></div>
+                <div class="voxel v-white vf11"></div>
+                <div class="voxel v-white vf12"></div>
+              </div>
+            </div>
+
+            <div class="legend-row">
+              <div class="pill"><span class="dot" style="color: var(--yellow); background: var(--yellow);"></span> Yellow</div>
+              <div class="pill"><span class="dot" style="color: var(--red); background: var(--red);"></span> Red</div>
+              <div class="pill"><span class="dot" style="color: var(--blue); background: var(--blue);"></span> Blue</div>
+              <div class="pill"><span class="dot" style="color: var(--purple); background: var(--purple);"></span> Purple</div>
+            </div>
+          </div>
+
+          <aside class="quick-facts">
+            <div class="fact">
+              <strong>Board</strong>
+              <span>8 × 8 × 8 voxel grid · 512 occupiable cells</span>
+            </div>
+            <div class="fact">
+              <strong>Players</strong>
+              <span>4 factions · corner-based inward pressure</span>
+            </div>
+            <div class="fact">
+              <strong>Pieces per Player</strong>
+              <span>1 King · 1 Queen · 2 Rooks · 2 Bishops · 2 Knights</span>
+            </div>
+            <div class="fact">
+              <strong>Core Rule</strong>
+              <span>Pieces occupy voxel spaces, not edges, not intersections, not laser math soup</span>
+            </div>
+            <div class="fact">
+              <strong>Primary Constraint</strong>
+              <span>Readability beats theoretical elegance every single time</span>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="wrap">
+      <div class="toc-grid">
+        <a href="#overview"><strong>01 · Overview</strong><small>Identity, goals, design lens</small></a>
+        <a href="#board"><strong>02 · Board</strong><small>Voxel grid and spatial model</small></a>
+        <a href="#players"><strong>03 · Players</strong><small>Colors, corners, symmetry</small></a>
+        <a href="#pieces"><strong>04 · Pieces</strong><small>Set, occupation, collision</small></a>
+        <a href="#movement"><strong>05 · Movement</strong><small>Rook, bishop, queen, knight, king</small></a>
+        <a href="#formation"><strong>06 · Formation</strong><small>Corner tetrahedron setup</small></a>
+        <a href="#camera"><strong>07 · Camera</strong><small>Rotation and readability support</small></a>
+        <a href="#visuals"><strong>08 · Visuals</strong><small>Board, pieces, move markers</small></a>
+        <a href="#flow"><strong>09 · Interaction</strong><small>Turn loop and feedback</small></a>
+        <a href="#rules"><strong>10 · Rules</strong><small>Elimination and turn structure</small></a>
+        <a href="#prototype"><strong>11 · Prototype</strong><small>Validation plan and scope</small></a>
+        <a href="#identity"><strong>12 · Final Identity</strong><small>What the game is trying to become</small></a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="overview" class="panel">
+      <div class="mini-tag">01 · Overview</div>
+      <h2>Project Overview</h2>
+      <p>
+        Cube Chess is a four-player strategy game played inside a transparent volumetric cube. This version is built as a true 3D system rather than a flat game wearing a 3D Halloween costume. Each piece occupies a full voxel cell, and all movement, control, obstruction, and capture logic operate within real three-axis space.
+      </p>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Voxel Occupation</h3>
+          <p>Pieces live inside cells. They do not ride edges, vertices, or abstract beam intersections.</p>
+        </div>
+        <div class="card">
+          <h3>Full 3D First</h3>
+          <p>Width, height, and depth all matter equally. The cube is the battlefield, not decorative framing.</p>
+        </div>
+        <div class="card">
+          <h3>Readability First</h3>
+          <p>If players cannot tell where a piece is or where it can go, the design loses no matter how clever the math looks.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="board" class="panel">
+      <div class="mini-tag">02 · Board</div>
+      <h2>Board Specification</h2>
+      <div class="grid-2">
+        <div>
+          <h3>Grid Model</h3>
+          <ul>
+            <li>Board size: <strong>8 × 8 × 8</strong></li>
+            <li>Total cells: <strong>512 voxels</strong></li>
+            <li>Coordinate model: <strong>(x, y, z)</strong></li>
+            <li>Every voxel is either empty or occupied by exactly one piece</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Presentation Goals</h3>
+          <ul>
+            <li>Transparent outer cube shell</li>
+            <li>Faint visible voxel subdivision</li>
+            <li>Subtle atmospheric glow and depth fade</li>
+            <li>Optional slice emphasis for local readability</li>
+          </ul>
+        </div>
+      </div>
+      <p>
+        The board should feel like a space the player looks into, not a flat slab the player looks across. Empty space remains understated until needed, which keeps the board from turning into a chandelier full of arguments.
+      </p>
+    </section>
+
+    <section id="players" class="panel">
+      <div class="mini-tag">03 · Players</div>
+      <h2>Player Configuration</h2>
+      <p>Four factions begin in opposing corners and expand inward toward the contested center.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Color</th>
+            <th>Starting Corner</th>
+            <th>Strategic Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="player-yellow">Yellow</td>
+            <td>Gold / Amber</td>
+            <td>Top-front-left</td>
+            <td>One of the two upper-corner factions pushing downward and inward</td>
+          </tr>
+          <tr>
+            <td class="player-red">Red</td>
+            <td>Crimson / Ember</td>
+            <td>Top-back-right</td>
+            <td>Upper-corner pressure faction opposing both lower players through center lanes</td>
+          </tr>
+          <tr>
+            <td class="player-blue">Blue</td>
+            <td>Electric Blue / Cyan</td>
+            <td>Bottom-front-left</td>
+            <td>Lower-corner faction with early vertical pressure options</td>
+          </tr>
+          <tr>
+            <td class="player-purple">Purple</td>
+            <td>Violet / Magenta-Violet</td>
+            <td>Bottom-back-right</td>
+            <td>Lower-corner faction mirroring the opposing top corner</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="pieces" class="panel">
+      <div class="mini-tag">04 · Pieces</div>
+      <h2>Piece Set, Occupation, and Collision</h2>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Per Player</h3>
+          <ul>
+            <li>1 King</li>
+            <li>1 Queen</li>
+            <li>2 Rooks</li>
+            <li>2 Bishops</li>
+            <li>2 Knights</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Occupation Rule</h3>
+          <p>A piece occupies exactly one voxel. Allied pieces cannot enter it. Enemies may enter only through legal capture.</p>
+        </div>
+        <div class="card">
+          <h3>Collision Rule</h3>
+          <p>Sliding movement stops at the first occupied voxel. Knights ignore intervening occupancy and only validate the destination.</p>
+        </div>
+      </div>
+      <p>
+        Removing pawns keeps the ruleset cleaner and lets the spatial system breathe. In full 3D, even eight major pieces per player already create enough tactical density to keep the cube from feeling like an abandoned warehouse.
+      </p>
+    </section>
+
+    <section id="movement" class="panel">
+      <div class="mini-tag">05 · Movement</div>
+      <h2>Movement System</h2>
+      <p>Movement is evaluated as legal voxel destinations, not as decorative path philosophy. Each piece family retains a recognizable chess identity while expanding into volumetric space.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Piece</th>
+            <th>Movement Logic</th>
+            <th>Direction Count</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Rook</td>
+            <td>Slides along cardinal axes: +X / -X / +Y / -Y / +Z / -Z</td>
+            <td>6</td>
+            <td>Travels through empty voxels until blocked</td>
+          </tr>
+          <tr>
+            <td>Bishop</td>
+            <td>Slides along plane diagonals in XY, XZ, and YZ planes</td>
+            <td>12</td>
+            <td>Each plane contributes four diagonal directions</td>
+          </tr>
+          <tr>
+            <td>Queen</td>
+            <td>Combines rook, bishop, and true 3D diagonal movement</td>
+            <td>26</td>
+            <td>Most spatially dominant piece on the board</td>
+          </tr>
+          <tr>
+            <td>Knight</td>
+            <td>2 along one axis, 1 along another, 0 along the third</td>
+            <td>Multiple jump targets</td>
+            <td>Ignores intervening blockers</td>
+          </tr>
+          <tr>
+            <td>King</td>
+            <td>Moves exactly one voxel in any adjacent legal direction</td>
+            <td>26 adjacent cells</td>
+            <td>Local omnidirectional unit</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="formation" class="panel">
+      <div class="mini-tag">06 · Formation</div>
+      <h2>Starting Formation</h2>
+      <p>Each faction begins in a corner tetrahedral cluster extending inward through three layers.</p>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Layer 0 — Corner Tip</h3>
+          <p><strong>King</strong></p>
+        </div>
+        <div class="card">
+          <h3>Layer 1 — Three Adjacent Inward Voxels</h3>
+          <p><strong>Queen · Bishop · Bishop</strong></p>
+        </div>
+        <div class="card">
+          <h3>Layer 2 — Outer Inward Ring</h3>
+          <p><strong>Rook · Rook · Knight · Knight</strong></p>
+        </div>
+      </div>
+      <p>
+        This arrangement gives the king a strongly nested identity while preserving a clean geometric opening state. It also makes the whole board look like four compressed attack crystals aimed at the middle, which is a lot cooler than “everyone politely lines up and waits.”
+      </p>
+    </section>
+
+    <section id="camera" class="panel">
+      <div class="mini-tag">07 · Camera</div>
+      <h2>Full 3D Camera System</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Core Requirements</h3>
+          <ul>
+            <li>Horizontal cube rotation through direct drag</li>
+            <li>Controlled vertical pitch adjustment</li>
+            <li>Minimal inertia and no floaty over-spin</li>
+            <li>Fast reorientation after rotation</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Readability Support</h3>
+          <ul>
+            <li>Optional camera easing toward selected piece</li>
+            <li>Transparency reduction on obstructing geometry</li>
+            <li>Slice or local-region emphasis during piece selection</li>
+            <li>Potential angle snap assists at 45° or 90° intervals</li>
+          </ul>
+        </div>
+      </div>
+      <p>
+        The camera is a gameplay tool, not a cinematic toy. If the player loses the active piece every time they rotate, the system is doing slapstick instead of strategy.
+      </p>
+    </section>
+
+    <section id="visuals" class="panel">
+      <div class="mini-tag">08 · Visuals</div>
+      <h2>Board, Piece, and Move Visualization</h2>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Board Readability</h3>
+          <ul>
+            <li>Faint wireframe subdivision</li>
+            <li>Soft outer shell glow</li>
+            <li>Depth haze instead of visual clutter</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Occupied Voxels</h3>
+          <ul>
+            <li>Bright faction-colored cell base</li>
+            <li>Visible occupancy emphasis</li>
+            <li>Clear distinction from empty space</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Move Display</h3>
+          <ul>
+            <li>Legal destinations shown as voxel markers</li>
+            <li>Capture cells shown more aggressively</li>
+            <li>Sliding path previews kept secondary and subtle</li>
+          </ul>
+        </div>
+      </div>
+      <h3>Capture Feedback</h3>
+      <p>
+        On capture, the attacking piece resolves into the destination voxel, the target voxel flashes, the enemy piece collapses or dissolves, and the original origin cell becomes empty. The effect should be sharp and quick, ideally in the <span class="good">100–180 ms</span> range.
+      </p>
+    </section>
+
+    <section id="flow" class="panel">
+      <div class="mini-tag">09 · Interaction</div>
+      <h2>Interaction Flow</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Turn Interaction Loop</h3>
+          <ol style="margin: 10px 0 0; padding-left: 20px; color: var(--muted);">
+            <li>Inspect or rotate the cube</li>
+            <li>Select a friendly occupied voxel</li>
+            <li>Reveal legal destination voxels</li>
+            <li>Select a destination</li>
+            <li>Resolve move and capture feedback</li>
+            <li>Pass turn to the next player</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Support Systems</h3>
+          <ul>
+            <li>Last move origin and destination highlight</li>
+            <li>Threat indicators when relevant</li>
+            <li>Optional active-depth emphasis</li>
+            <li>Reduced opacity on obstructing geometry</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules" class="panel">
+      <div class="mini-tag">10 · Rules</div>
+      <h2>Rule Identity and Turn Structure</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Turn Order</h3>
+          <p>Recommended baseline rotation:</p>
+          <ul>
+            <li><span class="player-yellow">Yellow</span></li>
+            <li><span class="player-red">Red</span></li>
+            <li><span class="player-purple">Purple</span></li>
+            <li><span class="player-blue">Blue</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Elimination Condition</h3>
+          <p><strong>Recommended baseline:</strong> king capture rather than checkmate.</p>
+          <ul>
+            <li>Cleaner for multiplayer</li>
+            <li>Better for early AI prototypes</li>
+            <li>Less rules overhead in dense 3D states</li>
+          </ul>
+        </div>
+      </div>
+      <p>
+        This system is no longer standard chess stretched awkwardly into a cube. It becomes a volumetric territorial combat game with recognizable chess ancestry and much nastier center pressure.
+      </p>
+    </section>
+
+    <section id="prototype" class="panel">
+      <div class="mini-tag">11 · Prototype</div>
+      <h2>Prototype Requirement</h2>
+      <p>The first prototype should validate readability before it validates strategy depth.</p>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Prototype Feature Scope</h3>
+          <ul>
+            <li>Full 8×8×8 voxel board</li>
+            <li>Real 3D camera rotation</li>
+            <li>Occupied voxel display</li>
+            <li>Selection and movement on touch</li>
+            <li>Collision handling and capture support</li>
+            <li>Per-piece destination visualization</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Validation Criteria</h3>
+          <ul>
+            <li>Selected voxel identified instantly</li>
+            <li>Legal moves understood within ~2 seconds</li>
+            <li>Blocked vs open routes distinguished cleanly</li>
+            <li>Rotation does not destroy orientation</li>
+          </ul>
+        </div>
+      </div>
+      <h3>Recommended Test Order</h3>
+      <p><strong>Rook → Bishop → Queen → Knight → King</strong></p>
+      <p>
+        If rook or bishop readability fails, the rest of the system is already on fire. No need to invite the queen in to help burn the house down.
+      </p>
+    </section>
+
+    <section id="identity" class="panel">
+      <div class="mini-tag">12 · Final Identity</div>
+      <h2>Final Identity Statement</h2>
+      <p>
+        Cube Chess is a 4-player voxel-based 3D strategy game in which chess-derived pieces occupy and contest real cubic space inside a transparent battlefield. Its identity depends on full volumetric movement, strong corner-based spatial conflict, camera-supported readability, and clean tactical clarity inside dense 3D space.
+      </p>
+      <p>
+        The target feeling is not “normal chess but stranger.” The target feeling is a clean futuristic territorial war unfolding inside a living cube.
+      </p>
+    </section>
+
+    <div class="footer-note">
+      Cube Chess — Full 3D Voxel Occupation System · HTML design document
+    </div>
+  </main>
+</body>
+</html>
