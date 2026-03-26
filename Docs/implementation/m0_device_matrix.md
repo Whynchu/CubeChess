@@ -19,7 +19,7 @@
 | Pixel 6 | Android 12–14 | 2021 | Tensor | Mali-G78 MP20 | 8GB | 6.1" OLED |
 | OnePlus 9 | Android 11–14 | 2021 | Snapdragon 888 | Adreno 660 | 8GB | 6.55" Fluid AMOLED |
 
-**Rationale:** 2020–2021 flagship-to-midrange; represents >60% active mobile market. HTML5 canvas + WebGL support well-tested.
+**Rationale:** 2020–2021 flagship-to-midrange; represents >60% active mobile market. WebGL support is sufficient across target devices with disciplined shader and draw-call budgets.
 
 **Success Criteria:** 60 FPS gameplay, <100ms input latency, AI P95 <= 10s.
 
@@ -64,7 +64,7 @@
 | **SharedArrayBuffer** | Optional (for multi-threaded AI search) | ⚠️ Security restrictions; use only if beneficial |
 
 ### 2.4 Known Browser Issues
-- **iOS Safari WebGL performance:** Canvas 2D rendering faster than WebGL for voxel grid; recommend canvas-first for target tier
+- **iOS Safari WebGL performance:** Can show shader compile and fill-rate spikes; prewarm shaders and limit overdraw for stable frame time
 - **Android fragmentation:** Some Qualcomm drivers have WebGL shader compilation bugs; use conservative GLSL 1.0 syntax
 - **LocalStorage quota:** 5MB on some browsers; turn traces may need compression or cloud storage fallback
 
@@ -108,14 +108,14 @@
 
 | Approach | Pros | Cons | Recommendation |
 |----------|------|------|-----------------|
-| **Canvas 2D** | Simple, predictable, no shader compilation | Limited 3D capabilities; all draw calls synchronous | **Primary for voxel grid** |
-| **WebGL** | Hardware-accelerated 3D, particle effects | Shader compilation overhead; driver variance | **Secondary for effects** |
-| **Hybrid** | Canvas for board, WebGL for effects | Complexity; context switching | **Explore after M3** |
+| **WebGL** | Hardware-accelerated 3D, batching, better long-term visual scalability | Shader/tooling complexity, driver variance | **Primary for board, pieces, and highlights** |
+| **Canvas 2D** | Simple fallback path, low implementation overhead | Limited 3D depth cues and scalability | **Fallback mode only** |
+| **Hybrid** | WebGL core with Canvas overlays for UI/debug | Coordination complexity | **Use selectively where it simplifies UI tooling** |
 
 **For MVP (Target Tier):**
-- Use **Canvas 2D** for board rendering (voxels, highlights, piece instances)
-- Defer WebGL to M5+ for particle effects and advanced lighting
-- Rationale: 60 FPS on Canvas 2D is achievable; WebGL optimization is high-risk
+- Use **WebGL** as primary renderer for voxel board, pieces, highlights, and move markers.
+- Keep **Canvas 2D fallback** path for constrained devices or emergency compatibility mode.
+- Rationale: WEBGL is the chosen stack; optimize early around shader compilation, batching, and overdraw control.
 
 ### 4.2 Threading Model
 - **Main thread:** Input handling, turn logic, UI updates, rendering
@@ -214,7 +214,7 @@
 
 - [ ] Target tier devices list locked (iPhone 12+, Pixel 5+)
 - [ ] Fallback tier devices list locked (iPhone 11, Pixel 4)
-- [ ] Rendering approach chosen (Canvas 2D primary, WebGL deferred)
+- [ ] Rendering approach chosen (WebGL primary, Canvas 2D fallback)
 - [ ] Threading model approved (main thread only for MVP)
 - [ ] Storage strategy approved (LocalStorage + optional cloud fallback)
 - [ ] Qualification criteria signed by lead

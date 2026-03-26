@@ -10,6 +10,7 @@ Build CubeChess as a fast, readable 3D strategy prototype with two primary flows
 
 ## 2. Non-Negotiable Constraints
 
+- Runtime target is mobile web with a WebGL-first renderer (Canvas 2D fallback only).
 - AI turn latency P95 must remain `<= 10,000 ms`
 - Median full round pace should remain `<= 40 seconds`
 - Game state transitions must be deterministic and testable
@@ -94,3 +95,4 @@ Any change to rules, turn logic, seat behavior, or AI budget logic must update:
 - relevant milestone task board
 - implementation plan (if scope/targets changed)
 - tests demonstrating intended behavior
+

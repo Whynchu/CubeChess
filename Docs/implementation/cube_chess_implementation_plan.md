@@ -3,7 +3,7 @@
 Source design: `Docs/design/cube_chess_full_3_d_voxel_design_doc.html`
 
 ## 1. Purpose
-Translate the Cube Chess design into a buildable, testable execution plan for a mobile-first prototype where the primary experience is watching AI factions play fast, readable matches (a "digital lava lamp" strategy loop), with a path to production.
+Translate the Cube Chess design into a buildable, testable execution plan for a mobile-first web prototype (WebGL-first) where the primary experience is watching AI factions play fast, readable matches (a "digital lava lamp" strategy loop), with a path to production.
 
 ## 2. Product Pillars
 - Full 3D voxel gameplay, not 2D rules in a 3D shell.
@@ -48,7 +48,12 @@ Translate the Cube Chess design into a buildable, testable execution plan for a 
 - `BoardView`: voxel grid, piece instances, highlight layers, animation events.
 - `Telemetry`: interaction timing, move comprehension metrics, camera recovery events, AI decision latency.
 
-### 4.2 Data Model (Engine-Agnostic)
+### 4.2 Platform Decision
+- Runtime target: Web (mobile browsers on iOS and Android).
+- Rendering: WebGL-first (Canvas 2D fallback for constrained devices).
+- Language/tooling baseline: TypeScript + browser runtime + optional Web Worker for AI budgets.
+
+### 4.3 Data Model (Engine-Agnostic)
 - `Coord3`: `(x:int, y:int, z:int)` with range `[0..7]`.
 - `Piece`: `{id, owner, type, coord, alive}`.
 - `Voxel`: `{coord, occupantPieceId?}`.
@@ -57,22 +62,24 @@ Translate the Cube Chess design into a buildable, testable execution plan for a 
 - `Move`: `{pieceId, from, to, isCapture, capturedPieceId?}`.
 - `AITurnMetrics`: `{player, decisionMs, candidateCount, selectedScore}`.
 
-### 4.3 Rules Contract
+### 4.4 Rules Contract
 - One piece per voxel.
 - Friendly destination occupied = illegal.
 - Enemy destination occupied = legal capture if movement pattern allows.
 - Sliding pieces stop at first occupied voxel.
 - Knights ignore intervening occupancy and validate destination only.
+- If a non-eliminated player has no legal moves, the turn auto-passes.
+- Human turn timeout: 60 seconds (configurable), then auto-pass if no valid move is confirmed.
 
 ## 5. Milestone Plan
 ### Milestone 0: Project Bootstrap (2-3 days)
 Deliverables:
 - Repository structure for runtime, tests, and content.
-- Build target setup for iOS and Android.
+- Web runtime bootstrap for iOS Safari and Android Chrome (with PWA-friendly packaging path).
 - Minimal scene with camera and empty board bounds.
 
 Acceptance criteria:
-- App launches on device and simulator.
+- App launches in mobile browsers on iOS and Android test devices/simulators.
 - Debug overlay shows FPS and touch points.
 
 ### Milestone 1: Board and State Core (4-5 days)
@@ -133,16 +140,17 @@ Acceptance criteria:
 - Users identify legal move options within approximately 2 seconds.
 - Rotation recovery is reliable (no frequent orientation loss reports).
 
-### Milestone 6: Visual Feedback and Prototype Polish (4-5 days)
+### Milestone 6: Hardening, Release Prep, and Handoff (3-5 days)
 Deliverables:
-- Capture feedback timing (100-180 ms target).
-- Last-move visualization.
-- Threat and depth emphasis toggles.
-- UI pass for turn indicator and active faction readability.
+- Full regression pass across M1-M5 acceptance gates.
+- Soak and endurance suites (AI autoplay and mixed-seat).
+- Performance hotspot fixes and telemetry summary pipeline.
+- Release candidate go/no-go review and final handoff bundle.
 
 Acceptance criteria:
-- Capture and move feedback remain clear at 60 FPS on target mid-tier device.
-- Prototype supports full local 4-player match from start to finish.
+- No critical crashes or deadlocks in long-run runs.
+- KPI gates met or documented with explicit waivers and mitigations.
+- Final handoff package is complete and reproducible.
 
 ## 6. Testing Strategy
 ### 6.1 Automated
@@ -222,9 +230,10 @@ Content/
 - End-week review: demo build, test report, risk update, next-week cut list.
 
 ## 11. Immediate Next Actions
-1. Select engine and target device matrix.
+1. Lock WebGL renderer architecture (pipeline, shaders, fallback path) and complete browser smoke checks.
 2. Implement Milestone 1 data models and formation generator.
 3. Build movement test harness and complete rook-first validation.
 4. Implement AI move scoring stub and wire AI turn budget timer.
 5. Build autoplay loop and verify <= 10 second P95 turn time on device.
 6. Implement seat controller and validate 1 human + 3 AI match flow.
+

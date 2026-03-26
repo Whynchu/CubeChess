@@ -42,7 +42,7 @@ Clarifies 4-player elimination chess edge cases:
 Pre-qualified device matrix prevents late rework:
 - **Target tier:** iPhone 12+, Pixel 5+ (2020–2021 mainstream)
 - **Fallback tier:** iPhone 11, Pixel 4 (visual reduction to 40 FPS acceptable)
-- **Rendering:** Canvas 2D primary (voxel grid), WebGL deferred to M5+
+- **Rendering:** WebGL primary (board, pieces, highlights) with Canvas 2D fallback path
 - **Threading:** Main thread only for MVP
 - **Storage:** LocalStorage 5–10MB + optional cloud backup
 - **KPI baselines:** 60 FPS sustained, <100ms input latency, AI P95 ≤10s

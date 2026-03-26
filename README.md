@@ -2,7 +2,7 @@
 
 CubeChess is a 4-player voxel strategy game played on an `8x8x8` board where pieces occupy real 3D cells.
 
-This repository currently contains the design and implementation planning documents for building a fast, readable AI-first experience:
+This repository currently contains the design and implementation planning documents for building a fast, readable AI-first WebGL web experience:
 - Watch AI-vs-AI matches as a "digital lava lamp"
 - Join and play in mixed-seat matches (`Human + AI`)
 - Keep turn pacing fast (`<= 10s` AI turn P95 target)
@@ -25,6 +25,7 @@ Docs/
 
 ## Core Product Targets
 
+- Runtime target: mobile web (iOS Safari + Android Chrome), WebGL-first renderer
 - AI turn latency P95: `<= 10,000 ms`
 - Full 4-player round median: `<= 40 seconds`
 - Readability first: legal moves understood quickly, camera orientation preserved
@@ -48,3 +49,4 @@ Planning complete. Runtime implementation is next.
 ## License
 
 No license has been added yet.
+
