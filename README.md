@@ -2,25 +2,40 @@
 
 CubeChess is a 4-player voxel strategy game played on an `8x8x8` board where pieces occupy real 3D cells.
 
-This repository currently contains the design and implementation planning documents for building a fast, readable AI-first WebGL web experience:
+This repository contains the design, planning, and early runtime implementation for a fast, readable AI-first WebGL web experience:
 - Watch AI-vs-AI matches as a "digital lava lamp"
 - Join and play in mixed-seat matches (`Human + AI`)
 - Keep turn pacing fast (`<= 10s` AI turn P95 target)
+
+## Live Preview
+
+After the Pages workflow runs, the viewer is published at:
+- `https://whynchu.github.io/CubeChess/`
+
+Current viewer includes:
+- WebGL cube board shell + internal grid
+- Starting formation placement for all four factions
+- Orbit camera controls for visual inspection
 
 ## Repository Structure
 
 ```text
 Docs/
   design/
-    cube_chess_full_3_d_voxel_design_doc.html
   implementation/
-    cube_chess_implementation_plan.md
-    cube_chess_m1_task_board.md
-    cube_chess_m2_task_board.md
-    cube_chess_m3_task_board.md
-    cube_chess_m4_task_board.md
-    cube_chess_m5_task_board.md
-    cube_chess_m6_task_board.md
+Runtime/
+  Core/
+    Formation/
+    GameState/
+    Rules/
+Tests/
+  Performance/
+web/
+  index.html
+  style.css
+  main.js
+.github/workflows/
+  deploy-pages.yml
 ```
 
 ## Core Product Targets
@@ -42,11 +57,18 @@ Docs/
 
 See [Docs/implementation/cube_chess_implementation_plan.md](Docs/implementation/cube_chess_implementation_plan.md) for the full plan.
 
+## Dev Commands
+
+- `npm test` -> run core validation harness
+- `npm run bench:m2` -> run movement benchmark harness
+
 ## Status
 
-Planning complete. Runtime implementation is next.
+- M1 core runtime implemented and tested
+- M2 movement rules implemented and tested
+- WebGL viewer added for GitHub Pages visual feedback
+- M3 (turn/seat/timeout systems) next
 
 ## License
 
 No license has been added yet.
-
