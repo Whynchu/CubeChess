@@ -1,10 +1,22 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js";
+import * as THREE from "three";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/controls/OrbitControls.js";
+
+const statusEl = document.getElementById("status");
+function setStatus(msg) {
+  if (statusEl) statusEl.textContent = msg;
+}
 
 const BOARD_SIZE = 8;
 const canvas = document.getElementById("app");
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+} catch (err) {
+  setStatus("WebGL init failed. Check browser WebGL support.");
+  throw err;
+}
+
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -186,4 +198,5 @@ function onResize() {
 }
 
 window.addEventListener("resize", onResize);
+setStatus("Viewer loaded");
 requestAnimationFrame(animate);

@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CubeChess Viewer</title>
     <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"
+        }
+      }
+    </script>
   </head>
   <body>
     <div class="hud">
@@ -21,6 +28,7 @@
         <span class="dot purple"></span> Purple
         <span class="dot blue"></span> Blue
       </div>
+      <p id="status" class="status"></p>
     </div>
     <canvas id="app"></canvas>
     <script type="module" src="./main.js"></script>
