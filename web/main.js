@@ -147,24 +147,34 @@ function createStartingPieces() {
     for (let i = 0; i < layout.length; i += 1) {
       const [dx, dy, dz] = layout[i];
       const c = makeOffset(corner, dx, dy, dz);
-      const pos = boardToWorld(c.x, c.y, c.z);
-
-      const base = new THREE.Mesh(
-        new THREE.BoxGeometry(0.78, 0.18, 0.78),
-        new THREE.MeshStandardMaterial({ color: corner.color, emissive: corner.color, emissiveIntensity: 0.2, roughness: 0.5 })
+      const pos = boardToWorld(c.x, c.y, c.z);`r`n`r`n      const orb = new THREE.Mesh(
+        new THREE.SphereGeometry(i === 0 ? 0.3 : 0.24, 22, 22),
+        new THREE.MeshStandardMaterial({
+          color: corner.color,
+          emissive: corner.color,
+          emissiveIntensity: i === 0 ? 0.85 : 0.65,
+          roughness: 0.18,
+          metalness: 0.05,
+          transparent: true,
+          opacity: 0.95,
+        })
       );
-      base.position.copy(pos);
-      base.position.y -= 0.36;
+      orb.position.copy(pos);
 
-      const body = new THREE.Mesh(
-        new THREE.SphereGeometry(i === 0 ? 0.22 : 0.17, 16, 16),
-        new THREE.MeshStandardMaterial({ color: 0xeaf4ff, roughness: 0.25, metalness: 0.2 })
+      const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(i === 0 ? 0.42 : 0.34, 18, 18),
+        new THREE.MeshBasicMaterial({
+          color: corner.color,
+          transparent: true,
+          opacity: i === 0 ? 0.18 : 0.13,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
       );
-      body.position.copy(pos);
-      body.position.y += i === 0 ? 0.02 : 0;
+      glow.position.copy(pos);
 
-      group.add(base);
-      group.add(body);
+      group.add(orb);
+      group.add(glow);
     }
   }
 
@@ -200,6 +210,8 @@ function onResize() {
 window.addEventListener("resize", onResize);
 setStatus("Viewer loaded");
 requestAnimationFrame(animate);
+
+
 
 
 
