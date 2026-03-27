@@ -147,7 +147,9 @@ function createStartingPieces() {
     for (let i = 0; i < layout.length; i += 1) {
       const [dx, dy, dz] = layout[i];
       const c = makeOffset(corner, dx, dy, dz);
-      const pos = boardToWorld(c.x, c.y, c.z);`r`n`r`n      const orb = new THREE.Mesh(
+      const pos = boardToWorld(c.x, c.y, c.z);
+
+      const orb = new THREE.Mesh(
         new THREE.SphereGeometry(i === 0 ? 0.3 : 0.24, 22, 22),
         new THREE.MeshStandardMaterial({
           color: corner.color,
@@ -210,6 +212,9 @@ function onResize() {
 window.addEventListener("resize", onResize);
 setStatus("Viewer loaded");
 requestAnimationFrame(animate);
+
+
+
 
 
 
