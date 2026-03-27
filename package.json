@@ -1,6 +1,6 @@
 {
   "name": "cubechess",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "bench:m2": "node Tests/Performance/m2_movement_benchmark.js"
   }
 }
+
 
 
 
