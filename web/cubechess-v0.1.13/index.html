@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CubeChess Viewer - v0.1.13</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="hud">
+      <h1>CubeChess Viewer v0.1.13</h1>
+      <p>Versioned preview path: /cubechess-v0.1.13/</p>
+      <ul>
+        <li>Drag: orbit camera</li>
+        <li>Scroll / pinch: zoom</li>
+        <li>Right-drag: pan</li>
+      </ul>
+      <div class="legend">
+        <span class="dot yellow"></span> Yellow
+        <span class="dot red"></span> Red
+        <span class="dot purple"></span> Purple
+        <span class="dot blue"></span> Blue
+      </div>
+      <div class="controls">
+        <button id="pauseBtn" type="button">Pause</button>
+        <button id="stepBtn" type="button">Step</button>
+        <button id="resetBtn" type="button">Reset</button>
+        <label>
+          Speed
+          <select id="speedSelect">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+          </select>
+        </label>
+        <label>
+          Variety
+          <select id="varietySelect">
+            <option value="deterministic">Deterministic</option>
+            <option value="chaotic" selected>Chaotic</option>
+          </select>
+        </label>
+        <label class="follow-label">
+          <input id="followToggle" type="checkbox" />
+          Follow move
+        </label>
+      </div>
+      <p class="status" id="turn"></p>
+      <p class="status" id="paused"></p>
+      <p id="status" class="status"></p>
+      <p id="metrics" class="status"></p>
+    </div>
+    <canvas id="app"></canvas>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
