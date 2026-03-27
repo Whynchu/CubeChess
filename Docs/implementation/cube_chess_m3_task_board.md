@@ -18,16 +18,16 @@ Build the authoritative turn scheduler with elimination logic, strict AI timeout
 ## 3. Ticket Board
 | ID | Title | Est. | Owner | Depends On | Status |
 |---|---|---:|---|---|---|
-| M3-001 | Define seat model and controller contract | 0.5d | Core | M2 complete | Todo |
-| M3-002 | Implement authoritative turn state machine | 0.75d | Core | M3-001 | Todo |
-| M3-003 | Add elimination and winner resolution | 0.5d | Core | M3-002 | Todo |
-| M3-004 | Human turn gate and input readiness checks | 0.5d | Input/Core | M3-002 | Todo |
-| M3-005 | AI turn runner with budget timer and cancellation | 0.75d | AI/Core | M3-002 | Todo |
-| M3-006 | Timeout fallback move policy (safe best-known move) | 0.5d | AI/Core | M3-005 | Todo |
-| M3-007 | Seat configuration interface (pre-match) | 0.5d | UX/Core | M3-001, M3-004 | Todo |
-| M3-008 | Integration tests: mixed-seat turn flow | 0.75d | QA/Core | M3-003..M3-007 | Todo |
-| M3-009 | Performance tests: AI timeout and round pace | 0.5d | QA/Perf | M3-005, M3-006 | Todo |
-| M3-010 | Handoff notes for M4 autoplay/spectator | 0.25d | Core | M3-008, M3-009 | Todo |
+| M3-001 | Define seat model and controller contract | 0.5d | Core | M2 complete | Done |
+| M3-002 | Implement authoritative turn state machine | 0.75d | Core | M3-001 | Done |
+| M3-003 | Add elimination and winner resolution | 0.5d | Core | M3-002 | Done |
+| M3-004 | Human turn gate and input readiness checks | 0.5d | Input/Core | M3-002 | Done |
+| M3-005 | AI turn runner with budget timer and cancellation | 0.75d | AI/Core | M3-002 | Done |
+| M3-006 | Timeout fallback move policy (safe best-known move) | 0.5d | AI/Core | M3-005 | Done |
+| M3-007 | Seat configuration interface (pre-match) | 0.5d | UX/Core | M3-001, M3-004 | Done |
+| M3-008 | Integration tests: mixed-seat turn flow | 0.75d | QA/Core | M3-003..M3-007 | Done |
+| M3-009 | Performance tests: AI timeout and round pace | 0.5d | QA/Perf | M3-005, M3-006 | Done |
+| M3-010 | Handoff notes for M4 autoplay/spectator | 0.25d | Core | M3-008, M3-009 | Done |
 
 ## 4. Core Contracts
 ### 4.1 Seat Ownership
@@ -162,9 +162,10 @@ Day 4:
 - Fix defects and lock baseline.
 
 ## 8. Merge Checklist
-- [ ] Turn state machine and seat controller merged.
-- [ ] Human and AI turn routing validated.
-- [ ] AI timeout enforcement and fallback validated.
-- [ ] Mixed-seat integration tests passing.
-- [ ] P95 turn and round pace metrics recorded.
-- [ ] M4 handoff notes published.
+- [x] Turn state machine and seat controller merged.
+- [x] Human and AI turn routing validated.
+- [x] AI timeout enforcement and fallback validated.
+- [x] Mixed-seat integration tests passing.
+- [x] P95 turn and round pace metrics recorded.
+- [x] M4 handoff notes published.
+

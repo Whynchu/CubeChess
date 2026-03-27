@@ -15,16 +15,30 @@ import {
   ROOK_DIRECTIONS,
 } from "../Runtime/Core/Rules/movementDirections.js";
 import { getLegalMoves } from "../Runtime/Core/Rules/legalMoves.js";
+import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
+import {
+  ControllerType,
+  createSeatConfig,
+  presetAllAI,
+  presetOneHumanThreeAI,
+  presetTwoHumanTwoAI,
+} from "../Runtime/Core/Seats/index.js";
+
+const pendingTests = [];
 
 function run(name, fn) {
-  try {
-    fn();
-    console.log(`PASS ${name}`);
-  } catch (error) {
-    console.error(`FAIL ${name}`);
-    console.error(error);
-    process.exitCode = 1;
-  }
+  const testPromise = Promise.resolve()
+    .then(() => fn())
+    .then(() => {
+      console.log(`PASS ${name}`);
+    })
+    .catch((error) => {
+      console.error(`FAIL ${name}`);
+      console.error(error);
+      process.exitCode = 1;
+    });
+
+  pendingTests.push(testPromise);
 }
 
 function buildPiece(id, owner, type, x, y, z) {
@@ -212,6 +226,145 @@ run("Rook blocking and capture behavior is correct", () => {
   assert.equal(captureMove.capturedPieceId, enemy.id);
 });
 
+
+run("Seat presets produce valid deterministic mappings", () => {
+  const allAI = presetAllAI();
+  assert.equal(allAI[PlayerId.Yellow], ControllerType.AI);
+  assert.equal(allAI[PlayerId.Red], ControllerType.AI);
+  assert.equal(allAI[PlayerId.Purple], ControllerType.AI);
+  assert.equal(allAI[PlayerId.Blue], ControllerType.AI);
+
+  const oneHuman = presetOneHumanThreeAI(PlayerId.Purple);
+  assert.equal(oneHuman[PlayerId.Purple], ControllerType.Human);
+  assert.equal(oneHuman[PlayerId.Yellow], ControllerType.AI);
+
+  const twoHuman = presetTwoHumanTwoAI(PlayerId.Yellow, PlayerId.Blue);
+  assert.equal(twoHuman[PlayerId.Yellow], ControllerType.Human);
+  assert.equal(twoHuman[PlayerId.Blue], ControllerType.Human);
+  assert.equal(twoHuman[PlayerId.Red], ControllerType.AI);
+});
+
+run("TurnStateMachine resolves deterministic all-AI round flow", async () => {
+  const { matchState, occupancyMap } = initializeMatchState();
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: 100,
+  });
+
+  for (let i = 0; i < 4; i += 1) {
+    const begin = machine.beginTurn();
+    assert.equal(begin.type, TurnPhase.AwaitingAIMove);
+    const resolved = await machine.resolveAITurn({ requestMove: ({ legalMoves }) => legalMoves[0] });
+    assert.equal(resolved.type, "TurnResolved");
+    assert.equal(machine.phase, TurnPhase.Idle);
+  }
+
+  assert.equal(matchState.turnCount, 4);
+  assert.equal(matchState.activePlayer, PlayerId.Yellow);
+});
+
+run("TurnStateMachine enforces human turn gate and rejects out-of-turn input", async () => {
+  const { matchState, occupancyMap } = initializeMatchState();
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetOneHumanThreeAI(PlayerId.Yellow),
+    aiBudgetMs: 100,
+  });
+
+  const beginHuman = machine.beginTurn();
+  assert.equal(beginHuman.type, TurnPhase.AwaitingHumanMove);
+
+  assert.throws(() => {
+    machine.submitHumanMove({
+      player: PlayerId.Red,
+      move: beginHuman.legalMoves[0],
+    });
+  });
+
+  const humanResolved = machine.submitHumanMove({
+    player: PlayerId.Yellow,
+    move: beginHuman.legalMoves[0],
+  });
+  assert.equal(humanResolved.type, "TurnResolved");
+  assert.equal(matchState.activePlayer, PlayerId.Red);
+
+  const beginAI = machine.beginTurn();
+  assert.equal(beginAI.type, TurnPhase.AwaitingAIMove);
+  const aiResolved = await machine.resolveAITurn({ requestMove: ({ legalMoves }) => legalMoves[0] });
+  assert.equal(aiResolved.type, "TurnResolved");
+  assert.equal(matchState.activePlayer, PlayerId.Purple);
+});
+
+run("TurnStateMachine applies king-capture elimination and declares winner", async () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 7, 7, 7);
+  const yellowRook = buildPiece("Yellow-Rook-00", PlayerId.Yellow, PIECE_TYPES.Rook, 0, 0, 0);
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 0, 0, 1);
+
+  const { matchState, occupancyMap } = buildScenario([yellowKing, yellowRook, redKing], PlayerId.Yellow);
+  const seatConfig = createSeatConfig({
+    [PlayerId.Yellow]: ControllerType.AI,
+    [PlayerId.Red]: ControllerType.AI,
+    [PlayerId.Purple]: ControllerType.AI,
+    [PlayerId.Blue]: ControllerType.AI,
+  });
+
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig,
+    aiBudgetMs: 100,
+  });
+
+  const begin = machine.beginTurn();
+  assert.equal(begin.type, TurnPhase.AwaitingAIMove);
+
+  const resolved = await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.capturedPieceId === redKing.id) ?? legalMoves[0],
+  });
+
+  assert.equal(resolved.type, "MatchEnded");
+  assert.equal(resolved.eliminatedPlayer, PlayerId.Red);
+  assert.equal(resolved.winner, PlayerId.Yellow);
+  assert.equal(machine.phase, TurnPhase.MatchEnded);
+  assert.equal(matchState.eliminatedPlayers.has(PlayerId.Red), true);
+});
+
+run("AI timeout path returns fallback move within budget", async () => {
+  const { matchState, occupancyMap } = initializeMatchState();
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: 5,
+  });
+
+  const begin = machine.beginTurn();
+  assert.equal(begin.type, TurnPhase.AwaitingAIMove);
+
+  const start = Date.now();
+  const resolved = await machine.resolveAITurn({
+    budgetMs: 5,
+    requestMove: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return null;
+    },
+  });
+  const elapsedMs = Date.now() - start;
+
+  assert.equal(resolved.type, "TurnResolved");
+  assert.equal(resolved.timedOut, true);
+  assert.ok(elapsedMs < 1000, `timeout fallback took too long: ${elapsedMs}ms`);
+});
+await Promise.all(pendingTests);
+
 if (process.exitCode) {
   process.exit(process.exitCode);
 }
+
+
+
+
+
