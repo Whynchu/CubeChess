@@ -10,7 +10,7 @@ This repository contains the design, planning, and early runtime implementation 
 ## Live Preview
 
 After the Pages workflow runs, the viewer is published at:
-- `https://whynchu.github.io/CubeChess/cubechess-v0.1.18/`
+- `https://whynchu.github.io/CubeChess/cubechess-v0.1.19/`
 
 Current viewer includes:
 - WebGL cube board shell + internal grid

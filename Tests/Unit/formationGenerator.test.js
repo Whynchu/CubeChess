@@ -4,11 +4,12 @@ import assert from "node:assert/strict";
 import { PlayerId } from "../../Runtime/Core/GameState/constants.js";
 import { generateStartingPieces } from "../../Runtime/Core/Formation/formationGenerator.js";
 
-const PLAYERS = [PlayerId.Yellow, PlayerId.Red, PlayerId.Purple, PlayerId.Blue];
+const PLAYERS = [PlayerId.Yellow, PlayerId.Red, PlayerId.Purple, PlayerId.Blue,
+  PlayerId.Green, PlayerId.Orange, PlayerId.Pink, PlayerId.Cyan];
 
 test("Starting formation creates 32 unique, in-bounds pieces", () => {
   const pieces = generateStartingPieces();
-  assert.equal(pieces.length, 32);
+  assert.equal(pieces.length, 64);
 
   const ids = new Set();
   const coords = new Set();
@@ -22,8 +23,8 @@ test("Starting formation creates 32 unique, in-bounds pieces", () => {
     assert.ok(piece.coord.z >= 0 && piece.coord.z <= 7);
   }
 
-  assert.equal(ids.size, 32);
-  assert.equal(coords.size, 32);
+  assert.equal(ids.size, 64);
+  assert.equal(coords.size, 64);
 });
 
 test("Starting formation places exactly 8 pieces per player", () => {
