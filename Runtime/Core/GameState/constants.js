@@ -5,6 +5,10 @@ export const PlayerId = Object.freeze({
   Red: "Red",
   Purple: "Purple",
   Blue: "Blue",
+  Green: "Green",
+  Orange: "Orange",
+  Pink: "Pink",
+  Cyan: "Cyan",
 });
 
 export const PIECE_TYPES = Object.freeze({
@@ -20,6 +24,10 @@ export const TURN_ORDER = Object.freeze([
   PlayerId.Red,
   PlayerId.Purple,
   PlayerId.Blue,
+  PlayerId.Green,
+  PlayerId.Orange,
+  PlayerId.Pink,
+  PlayerId.Cyan,
 ]);
 
 export function assertNever(_value, message = "Unexpected value") {

@@ -7,6 +7,10 @@ const CORNERS = Object.freeze({
   [PlayerId.Red]: new Coord3(7, 0, 7),
   [PlayerId.Blue]: new Coord3(0, 0, 0),
   [PlayerId.Purple]: new Coord3(7, 7, 7),
+  [PlayerId.Orange]: new Coord3(7, 0, 0),
+  [PlayerId.Green]: new Coord3(7, 7, 0),
+  [PlayerId.Cyan]: new Coord3(0, 0, 7),
+  [PlayerId.Pink]: new Coord3(0, 7, 7),
 });
 
 function inwardStep(value) {
@@ -23,7 +27,8 @@ function offset(corner, x, y, z) {
 export function generateStartingPieces() {
   const allPieces = [];
 
-  for (const owner of [PlayerId.Yellow, PlayerId.Red, PlayerId.Purple, PlayerId.Blue]) {
+  for (const owner of [PlayerId.Yellow, PlayerId.Red, PlayerId.Purple, PlayerId.Blue,
+    PlayerId.Green, PlayerId.Orange, PlayerId.Pink, PlayerId.Cyan]) {
     const corner = CORNERS[owner];
     const pieces = [
       new Piece({ id: pieceId(owner, PIECE_TYPES.King, 0), owner, type: PIECE_TYPES.King, coord: corner }),

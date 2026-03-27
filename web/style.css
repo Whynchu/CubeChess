@@ -82,6 +82,10 @@ body {
 .red { background: #ff5858; }
 .purple { background: #b578ff; }
 .blue { background: #48a7ff; }
+.green { background: #2ecc71; }
+.orange { background: #f39c12; }
+.pink { background: #e91e63; }
+.cyan { background: #00bcd4; }
 
 .controls {
   margin-top: 12px;

@@ -97,14 +97,14 @@ run("Coord3 equality and key", () => {
   assert.equal(a.equals(c), false);
 });
 
-run("Formation creates 32 unique pieces and coords", () => {
+run("Formation creates 64 unique pieces and coords", () => {
   const pieces = generateStartingPieces();
-  assert.equal(pieces.length, 32);
+  assert.equal(pieces.length, 64);
 
   const ids = new Set(pieces.map((p) => p.id));
   const coords = new Set(pieces.map((p) => p.coord.key()));
-  assert.equal(ids.size, 32);
-  assert.equal(coords.size, 32);
+  assert.equal(ids.size, 64);
+  assert.equal(coords.size, 64);
 
   for (const piece of pieces) {
     assert.ok(piece.coord.x >= 0 && piece.coord.x <= 7);
@@ -115,7 +115,8 @@ run("Formation creates 32 unique pieces and coords", () => {
 
 run("Formation creates 8 pieces per player", () => {
   const pieces = generateStartingPieces();
-  for (const player of [PlayerId.Yellow, PlayerId.Red, PlayerId.Purple, PlayerId.Blue]) {
+  for (const player of [PlayerId.Yellow, PlayerId.Red, PlayerId.Purple, PlayerId.Blue,
+    PlayerId.Green, PlayerId.Orange, PlayerId.Pink, PlayerId.Cyan]) {
     assert.equal(pieces.filter((p) => p.owner === player).length, 8);
   }
 });
@@ -146,8 +147,8 @@ run("initializeMatchState is deterministic and valid", () => {
   assert.equal(first.matchState.activePlayer, PlayerId.Yellow);
   assert.equal(first.matchState.turnCount, 0);
   assert.equal(first.matchState.lastMove, null);
-  assert.equal(first.matchState.pieces.length, 32);
-  assert.equal(first.occupancyMap.size, 32);
+  assert.equal(first.matchState.pieces.length, 64);
+  assert.equal(first.occupancyMap.size, 64);
 
   assert.equal(JSON.stringify(first.matchState), JSON.stringify(second.matchState));
 });
@@ -233,6 +234,10 @@ run("Seat presets produce valid deterministic mappings", () => {
   assert.equal(allAI[PlayerId.Red], ControllerType.AI);
   assert.equal(allAI[PlayerId.Purple], ControllerType.AI);
   assert.equal(allAI[PlayerId.Blue], ControllerType.AI);
+  assert.equal(allAI[PlayerId.Green], ControllerType.AI);
+  assert.equal(allAI[PlayerId.Orange], ControllerType.AI);
+  assert.equal(allAI[PlayerId.Pink], ControllerType.AI);
+  assert.equal(allAI[PlayerId.Cyan], ControllerType.AI);
 
   const oneHuman = presetOneHumanThreeAI(PlayerId.Purple);
   assert.equal(oneHuman[PlayerId.Purple], ControllerType.Human);
@@ -253,7 +258,7 @@ run("TurnStateMachine resolves deterministic all-AI round flow", async () => {
     aiBudgetMs: 100,
   });
 
-  for (let i = 0; i < 4; i += 1) {
+  for (let i = 0; i < 8; i += 1) {
     const begin = machine.beginTurn();
     assert.equal(begin.type, TurnPhase.AwaitingAIMove);
     const resolved = await machine.resolveAITurn({ requestMove: ({ legalMoves }) => legalMoves[0] });
@@ -261,7 +266,7 @@ run("TurnStateMachine resolves deterministic all-AI round flow", async () => {
     assert.equal(machine.phase, TurnPhase.Idle);
   }
 
-  assert.equal(matchState.turnCount, 4);
+  assert.equal(matchState.turnCount, 8);
   assert.equal(matchState.activePlayer, PlayerId.Yellow);
 });
 
@@ -304,12 +309,7 @@ run("TurnStateMachine applies king-capture elimination and declares winner", asy
   const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 0, 0, 1);
 
   const { matchState, occupancyMap } = buildScenario([yellowKing, yellowRook, redKing], PlayerId.Yellow);
-  const seatConfig = createSeatConfig({
-    [PlayerId.Yellow]: ControllerType.AI,
-    [PlayerId.Red]: ControllerType.AI,
-    [PlayerId.Purple]: ControllerType.AI,
-    [PlayerId.Blue]: ControllerType.AI,
-  });
+  const seatConfig = presetAllAI();
 
   const machine = new TurnStateMachine({
     matchState,

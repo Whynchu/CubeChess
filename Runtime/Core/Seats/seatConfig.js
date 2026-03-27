@@ -27,6 +27,10 @@ export function presetAllAI() {
     [PlayerId.Red]: ControllerType.AI,
     [PlayerId.Purple]: ControllerType.AI,
     [PlayerId.Blue]: ControllerType.AI,
+    [PlayerId.Green]: ControllerType.AI,
+    [PlayerId.Orange]: ControllerType.AI,
+    [PlayerId.Pink]: ControllerType.AI,
+    [PlayerId.Cyan]: ControllerType.AI,
   });
 }
 
