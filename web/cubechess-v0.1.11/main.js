@@ -19,6 +19,7 @@ const speedSelect = document.getElementById("speedSelect");
 const followToggle = document.getElementById("followToggle");
 const resetBtn = document.getElementById("resetBtn");
 const metricsEl = document.getElementById("metrics");
+const varietySelect = document.getElementById("varietySelect");
 
 function setStatus(message) {
   if (statusEl) {
@@ -158,6 +159,26 @@ const PLAYER_COLOR = Object.freeze({
   Blue: 0x48a7ff,
 });
 
+const VarietyMode = Object.freeze({
+  Deterministic: "deterministic",
+  Chaotic: "chaotic",
+});
+
+let varietyMode = varietySelect?.value ?? VarietyMode.Chaotic;
+let varietySeed = 1;
+
+function reseedVariety() {
+  // New seed each reset in chaotic mode so full matches diverge.
+  varietySeed = (Math.floor(Math.random() * 0x7fffffff) ^ Date.now()) >>> 0;
+  if (varietySeed === 0) {
+    varietySeed = 1;
+  }
+}
+
+function nextVarietyRandom() {
+  varietySeed = (1664525 * varietySeed + 1013904223) >>> 0;
+  return varietySeed / 4294967296;
+}
 const AI_WEIGHTS = Object.freeze({
   capture: 1.0,
   center: 0.02,
@@ -192,7 +213,7 @@ function updateMetricsHud() {
   const p95Turn = percentile(telemetry.turnDurationsMs, 95);
   const medianRound = percentile(telemetry.roundDurationsMs, 50);
 
-  metricsEl.textContent = `avgTurn ${avgTurn.toFixed(1)}ms | p95 ${p95Turn.toFixed(1)}ms | medRound ${medianRound.toFixed(0)}ms | timeouts ${telemetry.timeoutCount}`;
+  metricsEl.textContent = `mode ${varietyMode} | avgTurn ${avgTurn.toFixed(1)}ms | p95 ${p95Turn.toFixed(1)}ms | medRound ${medianRound.toFixed(0)}ms | timeouts ${telemetry.timeoutCount}`;
 }
 
 function recordTurnTelemetry(turnMs, timedOut) {
@@ -640,6 +661,18 @@ speedSelect?.addEventListener("change", () => {
   }
 });
 
+varietySelect?.addEventListener("change", () => {
+  varietyMode = varietySelect.value === VarietyMode.Deterministic
+    ? VarietyMode.Deterministic
+    : VarietyMode.Chaotic;
+
+  if (varietyMode === VarietyMode.Chaotic) {
+    reseedVariety();
+  }
+
+  updateMetricsHud();
+});
+
 resetBtn?.addEventListener("click", () => {
   resetMatch({ resume: true });
 });
@@ -666,8 +699,22 @@ if (followToggle) {
   followToggle.checked = false;
 }
 
+if (varietySelect) {
+  varietySelect.value = varietyMode;
+}
+
+updateMetricsHud();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
+
+
+
+
+
+
+
+
 
 
 
