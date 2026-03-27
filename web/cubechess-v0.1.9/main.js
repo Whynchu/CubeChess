@@ -18,6 +18,7 @@ const stepBtn = document.getElementById("stepBtn");
 const speedSelect = document.getElementById("speedSelect");
 const followToggle = document.getElementById("followToggle");
 const resetBtn = document.getElementById("resetBtn");
+const metricsEl = document.getElementById("metrics");
 
 function setStatus(message) {
   if (statusEl) {
@@ -152,6 +153,66 @@ const PLAYER_COLOR = Object.freeze({
   Blue: 0x48a7ff,
 });
 
+const AI_WEIGHTS = Object.freeze({
+  capture: 1.0,
+  center: 0.02,
+  mobility: 0.05,
+});
+
+function percentile(values, p) {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.max(0, Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
+const telemetry = {
+  turnDurationsMs: [],
+  roundDurationsMs: [],
+  timeoutCount: 0,
+  roundTurnCount: 0,
+  roundStartMs: performance.now(),
+};
+
+function updateMetricsHud() {
+  if (!metricsEl) {
+    return;
+  }
+
+  const avgTurn = telemetry.turnDurationsMs.length
+    ? telemetry.turnDurationsMs.reduce((sum, value) => sum + value, 0) / telemetry.turnDurationsMs.length
+    : 0;
+  const p95Turn = percentile(telemetry.turnDurationsMs, 95);
+  const medianRound = percentile(telemetry.roundDurationsMs, 50);
+
+  metricsEl.textContent = `avgTurn ${avgTurn.toFixed(1)}ms | p95 ${p95Turn.toFixed(1)}ms | medRound ${medianRound.toFixed(0)}ms | timeouts ${telemetry.timeoutCount}`;
+}
+
+function recordTurnTelemetry(turnMs, timedOut) {
+  telemetry.turnDurationsMs.push(turnMs);
+  if (telemetry.turnDurationsMs.length > 200) {
+    telemetry.turnDurationsMs.shift();
+  }
+
+  if (timedOut) {
+    telemetry.timeoutCount += 1;
+  }
+
+  telemetry.roundTurnCount += 1;
+  if (telemetry.roundTurnCount >= TURN_ORDER.length) {
+    const now = performance.now();
+    telemetry.roundDurationsMs.push(now - telemetry.roundStartMs);
+    if (telemetry.roundDurationsMs.length > 200) {
+      telemetry.roundDurationsMs.shift();
+    }
+    telemetry.roundStartMs = now;
+    telemetry.roundTurnCount = 0;
+  }
+
+  updateMetricsHud();
+}
 const PIECE_VALUE = Object.freeze({
   [PIECE_TYPES.King]: 9999,
   [PIECE_TYPES.Queen]: 9,
@@ -205,39 +266,55 @@ function setPieceWorldPosition(pieceVisual, coord) {
 }
 
 function scoreMove(move, context) {
-  const { matchState } = context;
+  const { matchState, legalMoves } = context;
   let score = 0;
 
   if (move.capturedPieceId) {
     const captured = matchState.pieces.find((piece) => piece.id === move.capturedPieceId);
     if (captured) {
-      score += PIECE_VALUE[captured.type] ?? 1;
+      score += (PIECE_VALUE[captured.type] ?? 1) * AI_WEIGHTS.capture;
     }
   }
 
   const centerDistance = Math.abs(move.to.x - 3.5) + Math.abs(move.to.y - 3.5) + Math.abs(move.to.z - 3.5);
-  score += (10.5 - centerDistance) * 0.02;
+  score += (10.5 - centerDistance) * AI_WEIGHTS.center;
+
+  const ownPieceOptions = legalMoves.filter((candidate) => candidate.pieceId === move.pieceId).length;
+  score += ownPieceOptions * AI_WEIGHTS.mobility;
 
   return score;
 }
 
 async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
-  let bestMove = legalMoves[0] ?? null;
-  let bestScore = Number.NEGATIVE_INFINITY;
+  const scored = [];
 
   for (const move of legalMoves) {
     if (signal?.aborted) {
       break;
     }
 
-    const score = scoreMove(move, context);
-    if (score > bestScore) {
-      bestScore = score;
-      bestMove = move;
-    }
+    const score = scoreMove(move, { ...context, legalMoves });
+    scored.push({ move, score });
   }
 
-  return bestMove;
+  if (scored.length === 0) {
+    return legalMoves[0] ?? null;
+  }
+
+  scored.sort((a, b) => {
+    if (a.score !== b.score) {
+      return b.score - a.score;
+    }
+    if (a.move.pieceId !== b.move.pieceId) {
+      return a.move.pieceId.localeCompare(b.move.pieceId);
+    }
+    if (a.move.to.x !== b.move.to.x) return a.move.to.x - b.move.to.x;
+    if (a.move.to.y !== b.move.to.y) return a.move.to.y - b.move.to.y;
+    return a.move.to.z - b.move.to.z;
+  });
+
+  const topK = Math.min(8, scored.length);
+  return scored[0 + (topK > 1 ? 0 : 0)].move;
 }
 
 let matchState;
@@ -273,6 +350,11 @@ function rebuildPieceVisuals() {
 function resetMatch({ resume = true } = {}) {
   clearTurnTimer();
   animations.length = 0;
+  telemetry.turnDurationsMs = [];
+  telemetry.roundDurationsMs = [];
+  telemetry.timeoutCount = 0;
+  telemetry.roundTurnCount = 0;
+  telemetry.roundStartMs = performance.now();
 
   const initial = initializeMatchState();
   matchState = initial.matchState;
@@ -292,10 +374,12 @@ function resetMatch({ resume = true } = {}) {
     setPausedLabel(false);
     setStatus(`Viewer v${VERSION} reset. Autoplay active.`);
     updateTurnHud();
+    updateMetricsHud();
     scheduleTurn(200);
   } else {
     setStatus(`Viewer v${VERSION} reset.`);
     updateTurnHud();
+    updateMetricsHud();
   }
 }
 
@@ -414,6 +498,7 @@ function handleTurnResult(result) {
     const winner = result.winner ?? turnMachine.winner;
     setStatus(`Match ended. Winner: ${winner ?? "None"}`);
     updateTurnHud();
+    updateMetricsHud();
     return;
   }
 
@@ -463,10 +548,12 @@ async function runOneTurn() {
     }
 
     if (begin.type === TurnPhase.AwaitingAIMove) {
+      const turnStartMs = performance.now();
       const result = await turnMachine.resolveAITurn({
         requestMove: chooseHeuristicAIMove,
         budgetMs: AI_BUDGET_MS,
       });
+      recordTurnTelemetry(performance.now() - turnStartMs, result?.timedOut === true);
       handleTurnResult(result);
       return;
     }
@@ -548,6 +635,17 @@ if (followToggle) {
 
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
+
+
+
+
+
+
+
+
+
+
 
 
 
