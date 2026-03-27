@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/controls/OrbitControls.js";
 
-import { initializeMatchState } from "../Runtime/Core/GameState/initializeMatchState.js";
-import { TURN_ORDER, PIECE_TYPES } from "../Runtime/Core/GameState/constants.js";
-import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
-import { presetAllAI } from "../Runtime/Core/Seats/index.js";
+import { initializeMatchState } from "../../Runtime/Core/GameState/initializeMatchState.js";
+import { TURN_ORDER, PIECE_TYPES } from "../../Runtime/Core/GameState/constants.js";
+import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
+import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
 
 const VERSION = "0.1.15";
 const BOARD_SIZE = 8;
@@ -754,7 +754,6 @@ if (varietySelect) {
 updateMetricsHud();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
-
 
 
 
