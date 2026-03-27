@@ -1,0 +1,325 @@
+:root {
+  color-scheme: dark;
+  /* iOS Dark Mode Colors */
+  --bg-primary: #0a0e27;
+  --bg-secondary: #1a1f3a;
+  --bg-tertiary: #2a2f4a;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1a6;
+  --accent-blue: #0a84ff;
+  --accent-cyan: #55bef0;
+  --line: rgba(255, 255, 255, 0.1);
+  
+  /* Player colors */
+  --player-yellow: #ffce3a;
+  --player-red: #ff5858;
+  --player-purple: #b578ff;
+  --player-blue: #48a7ff;
+  
+  /* Spacing (iOS design) */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  
+  /* Border radius (iOS style) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 20% 50%, #1a3a52 0%, var(--bg-primary) 40%);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: var(--bg-primary);
+}
+
+/* ========== HUD Container ========== */
+.hud {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: var(--spacing-lg);
+  background: rgba(26, 31, 58, 0.95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-height: 50vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.hud h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+}
+
+.hud p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.hud ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.hud ul li {
+  padding: 4px 0;
+}
+
+.hud ul li::before {
+  content: "• ";
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+/* ========== Legend/Faction Display ========== */
+.legend {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-sm);
+  margin: var(--spacing-sm) 0;
+  padding: var(--spacing-md);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.yellow { background: var(--player-yellow); color: var(--player-yellow); }
+.red { background: var(--player-red); color: var(--player-red); }
+.purple { background: var(--player-purple); color: var(--player-purple); }
+.blue { background: var(--player-blue); color: var(--player-blue); }
+
+/* ========== Status Display ========== */
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+}
+
+.status-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.status-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.status {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: var(--spacing-sm);
+}
+
+.status.running { color: #30b0c0; }
+.status.paused { color: #ff9500; }
+
+/* ========== Controls - iOS Style ========== */
+.controls {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.controls.full-width {
+  grid-template-columns: 1fr;
+}
+
+.controls button,
+.controls select {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  -webkit-user-select: none;
+  user-select: none;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+}
+
+.controls button {
+  background: var(--accent-blue);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
+}
+
+.controls button:active {
+  background: #0071e3;
+  box-shadow: 0 2px 4px rgba(10, 132, 255, 0.5);
+  transform: scale(0.98);
+}
+
+.controls select {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border: 1px solid var(--line);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.controls select:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.controls label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+}
+
+.follow-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.follow-label input {
+  margin: 0;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent-blue);
+}
+
+/* ========== Responsive Design - Mobile First ========== */
+
+/* iPhone SE / small phones */
+@media (max-width: 375px) {
+  .hud {
+    padding: var(--spacing-md);
+    gap: var(--spacing-sm);
+  }
+  
+  .hud h1 {
+    font-size: 18px;
+  }
+  
+  .controls {
+    grid-template-columns: 1fr;
+  }
+  
+  .legend {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* iPad / Landscape */
+@media (min-width: 1024px) or (orientation: landscape) {
+  .hud {
+    bottom: auto;
+    left: var(--spacing-lg);
+    right: auto;
+    top: var(--spacing-lg);
+    width: 360px;
+    max-height: calc(100vh - 32px);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--line);
+  }
+}
+
+/* Tablet / Medium screens */
+@media (max-width: 1023px) and (min-width: 768px) {
+  .legend {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .controls {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Small notch/safe area handling */
+@supports (padding: max(0px)) {
+  .hud {
+    padding-bottom: max(var(--spacing-lg), env(safe-area-inset-bottom));
+    padding-left: max(var(--spacing-lg), env(safe-area-inset-left));
+    padding-right: max(var(--spacing-lg), env(safe-area-inset-right));
+  }
+}
