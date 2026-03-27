@@ -124,21 +124,20 @@ function makeOffset(corner, dx, dy, dz) {
 function createStartingPieces() {
   const corners = {
     Yellow: { x: 0, y: 7, z: 0, color: 0xffce3a },
-    Red: { x: 7, y: 7, z: 7, color: 0xff5858 },
-    Purple: { x: 7, y: 0, z: 7, color: 0xb578ff },
+    Red: { x: 7, y: 0, z: 7, color: 0xff5858 },
+    Purple: { x: 7, y: 7, z: 7, color: 0xb578ff },
     Blue: { x: 0, y: 0, z: 0, color: 0x48a7ff },
   };
 
-  // Side-adjacent corner cells stay empty; formation points inward.
   const layout = [
     [0, 0, 0],
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+    [1, 1, 0],
+    [1, 0, 1],
+    [0, 1, 1],
     [1, 1, 1],
-    [2, 1, 1],
-    [1, 2, 1],
-    [1, 1, 2],
-    [2, 2, 1],
-    [2, 1, 2],
-    [1, 2, 2],
   ];
 
   const group = new THREE.Group();
@@ -201,4 +200,6 @@ function onResize() {
 window.addEventListener("resize", onResize);
 setStatus("Viewer loaded");
 requestAnimationFrame(animate);
+
+
 

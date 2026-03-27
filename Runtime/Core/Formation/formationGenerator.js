@@ -4,9 +4,9 @@ import { PIECE_TYPES, PlayerId } from "../GameState/constants.js";
 
 const CORNERS = Object.freeze({
   [PlayerId.Yellow]: new Coord3(0, 7, 0),
-  [PlayerId.Red]: new Coord3(7, 7, 7),
+  [PlayerId.Red]: new Coord3(7, 0, 7),
   [PlayerId.Blue]: new Coord3(0, 0, 0),
-  [PlayerId.Purple]: new Coord3(7, 0, 7),
+  [PlayerId.Purple]: new Coord3(7, 7, 7),
 });
 
 function inwardStep(value) {
@@ -43,3 +43,4 @@ export function generateStartingPieces() {
 
   return allPieces;
 }
+
