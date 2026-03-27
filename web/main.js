@@ -6,7 +6,7 @@ import { TURN_ORDER, PIECE_TYPES } from "../Runtime/Core/GameState/constants.js"
 import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../Runtime/Core/Seats/index.js";
 
-const VERSION = "0.1.8";
+const VERSION = "0.1.9";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 
@@ -17,6 +17,7 @@ const pauseBtn = document.getElementById("pauseBtn");
 const stepBtn = document.getElementById("stepBtn");
 const speedSelect = document.getElementById("speedSelect");
 const followToggle = document.getElementById("followToggle");
+const resetBtn = document.getElementById("resetBtn");
 
 function setStatus(message) {
   if (statusEl) {
@@ -141,6 +142,9 @@ function createGridLines() {
   return new THREE.LineSegments(geo, lineMat);
 }
 
+boardGroup.add(createCubeShell());
+boardGroup.add(createGridLines());
+
 const PLAYER_COLOR = Object.freeze({
   Yellow: 0xffce3a,
   Red: 0xff5858,
@@ -236,23 +240,63 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
   return bestMove;
 }
 
-const { matchState, occupancyMap } = initializeMatchState();
-const turnMachine = new TurnStateMachine({
-  matchState,
-  occupancyMap,
-  seatConfig: presetAllAI(),
-  aiBudgetMs: AI_BUDGET_MS,
-});
+let matchState;
+let occupancyMap;
+let turnMachine;
 
 const pieceLayer = new THREE.Group();
 boardGroup.add(pieceLayer);
 
 const pieceVisuals = new Map();
-for (const piece of matchState.pieces) {
-  const visual = makePieceVisual(piece);
-  setPieceWorldPosition(visual, piece.coord);
-  pieceLayer.add(visual.root);
-  pieceVisuals.set(piece.id, visual);
+
+function clearPieceVisuals() {
+  for (const visual of pieceVisuals.values()) {
+    pieceLayer.remove(visual.root);
+  }
+  pieceVisuals.clear();
+}
+
+function rebuildPieceVisuals() {
+  clearPieceVisuals();
+
+  for (const piece of matchState.pieces) {
+    if (!piece.alive) {
+      continue;
+    }
+    const visual = makePieceVisual(piece);
+    setPieceWorldPosition(visual, piece.coord);
+    pieceLayer.add(visual.root);
+    pieceVisuals.set(piece.id, visual);
+  }
+}
+
+function resetMatch({ resume = true } = {}) {
+  clearTurnTimer();
+  animations.length = 0;
+
+  const initial = initializeMatchState();
+  matchState = initial.matchState;
+  occupancyMap = initial.occupancyMap;
+  turnMachine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: AI_BUDGET_MS,
+  });
+
+  rebuildPieceVisuals();
+  controls.target.set(0, 0, 0);
+
+  if (resume) {
+    paused = false;
+    setPausedLabel(false);
+    setStatus(`Viewer v${VERSION} reset. Autoplay active.`);
+    updateTurnHud();
+    scheduleTurn(200);
+  } else {
+    setStatus(`Viewer v${VERSION} reset.`);
+    updateTurnHud();
+  }
 }
 
 const centerGlow = new THREE.Mesh(
@@ -476,6 +520,10 @@ speedSelect?.addEventListener("change", () => {
   }
 });
 
+resetBtn?.addEventListener("click", () => {
+  resetMatch({ resume: true });
+});
+
 function animate(time) {
   const t = time * 0.001;
   centerGlow.scale.setScalar(1 + Math.sin(t * 1.7) * 0.08);
@@ -494,8 +542,18 @@ function onResize() {
 
 window.addEventListener("resize", onResize);
 
-setPausedLabel(paused);
-updateTurnHud();
-setStatus(`Viewer v${VERSION} loaded. Autoplay active.`);
-scheduleTurn(300);
+if (followToggle) {
+  followToggle.checked = false;
+}
+
+resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
+
+
+
+
+
+
+
+

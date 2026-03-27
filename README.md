@@ -10,7 +10,7 @@ This repository contains the design, planning, and early runtime implementation 
 ## Live Preview
 
 After the Pages workflow runs, the viewer is published at:
-- `https://whynchu.github.io/CubeChess/cubechess-v0.1.8/`
+- `https://whynchu.github.io/CubeChess/cubechess-v0.1.9/`
 
 Current viewer includes:
 - WebGL cube board shell + internal grid
@@ -60,18 +60,21 @@ See [Docs/implementation/cube_chess_implementation_plan.md](Docs/implementation/
 ## Dev Commands
 
 - `npm test` -> run core validation harness
-- `npm run bench:m2` -> run movement benchmark harness`r`n- `npm run bench:m3` -> run turn/round pace benchmark harness
+- `npm run bench:m2` -> run movement benchmark harness
+- `npm run bench:m3` -> run turn/round pace benchmark harness
 
 ## Status
 
 - M1 core runtime implemented and tested
 - M2 movement rules implemented and tested
 - WebGL viewer added for GitHub Pages visual feedback
-- M3 turn/seat/timeout systems implemented`r`n- M4 autoplay viewer loop now visible in WebGL (v0.1.8 baseline)
+- M3 turn/seat/timeout systems implemented
+- M4 autoplay viewer loop now visible in WebGL (v0.1.8 baseline)
 
 ## License
 
 No license has been added yet.
+
 
 
 

@@ -6,7 +6,7 @@ import { TURN_ORDER, PIECE_TYPES } from "../../Runtime/Core/GameState/constants.
 import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
 
-const VERSION = "0.1.8";
+const VERSION = "0.1.9";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 
@@ -548,6 +548,7 @@ if (followToggle) {
 
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
 
 
 
