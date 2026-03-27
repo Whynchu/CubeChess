@@ -96,3 +96,9 @@ Any change to rules, turn logic, seat behavior, or AI budget logic must update:
 - implementation plan (if scope/targets changed)
 - tests demonstrating intended behavior
 
+## 11. Versioning Policy
+
+- Every push to `main` must increment the patch version by `0.0.1`.
+- Update `package.json` version on every push.
+- Publish a matching versioned viewer route under `web/cubechess-vX.Y.Z/`.
+- Update root `web/index.html` redirect and README live preview URL to the newest version.
