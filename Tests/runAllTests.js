@@ -567,6 +567,46 @@ run("AI evaluator applies development and repetition penalties from behavior con
   assert.ok(repeatedEval.breakdown.repetition < 0, "Repeated/backtrack move should get repetition penalty");
   assert.ok(freshEval.score > repeatedEval.score, "Fresh context should outscore repeated context for same move");
 });
+run("AI evaluator penalizes same-type streaks to improve piece diversity", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const yellowKnight = buildPiece("Yellow-Knight-1", PlayerId.Yellow, PIECE_TYPES.Knight, 4, 4, 4);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+
+  const { matchState, occupancyMap } = buildScenario([yellowRook, yellowKnight, yellowKing, redKing], PlayerId.Yellow);
+  const rookMove = getLegalMoves(matchState, occupancyMap, yellowRook.id)[0];
+  const knightMove = getLegalMoves(matchState, occupancyMap, yellowKnight.id)[0];
+
+  assert.ok(rookMove, "Expected at least one rook move");
+  assert.ok(knightMove, "Expected at least one knight move");
+
+  const behaviorContext = {
+    pieceMoveCountsById: new Map(),
+    recentMoves: [
+      { pieceId: yellowRook.id, from: rookMove.from, to: rookMove.to },
+      { pieceId: yellowRook.id, from: rookMove.to, to: rookMove.from },
+      { pieceId: "Yellow-Rook-99", from: rookMove.from, to: rookMove.to },
+      { pieceId: "Yellow-Rook-98", from: rookMove.from, to: rookMove.to },
+    ],
+  };
+
+  const rookEval = evaluateHeuristicMove({
+    move: rookMove,
+    matchState,
+    legalMoves: getLegalMoves(matchState, occupancyMap, yellowRook.id),
+    behaviorContext,
+  });
+
+  const knightEval = evaluateHeuristicMove({
+    move: knightMove,
+    matchState,
+    legalMoves: getLegalMoves(matchState, occupancyMap, yellowKnight.id),
+    behaviorContext,
+  });
+
+  assert.ok(rookEval.breakdown.diversity < 0, "Rook move should incur diversity penalty under same-type streak");
+  assert.ok(knightEval.breakdown.diversity >= rookEval.breakdown.diversity, "Different type should be penalized less than repeated type");
+});
 run("AI timeout path returns fallback move within budget", async () => {
   const { matchState, occupancyMap } = initializeMatchState();
   const machine = new TurnStateMachine({
@@ -598,6 +638,7 @@ await Promise.all(pendingTests);
 if (process.exitCode) {
   process.exit(process.exitCode);
 }
+
 
 
 

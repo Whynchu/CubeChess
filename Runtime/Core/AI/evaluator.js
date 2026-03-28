@@ -9,9 +9,11 @@ export const DEFAULT_AI_WEIGHTS = Object.freeze({
   defended: 0.03,
   kingSafety: 0.6,
   development: 0.12,
-  inactivity: 0.05,
-  repeatMove: 0.3,
-  backtrack: 0.22,
+  inactivity: 0.07,
+  repeatMove: 0.42,
+  backtrack: 0.32,
+  samePieceStreak: 0.12,
+  sameTypeRepeat: 0.09,
   counterRisk: 0.1,
 });
 
@@ -35,6 +37,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     inactivity: 1.08,
     repeatMove: 1.0,
     backtrack: 1.05,
+    samePieceStreak: 1.18,
+    sameTypeRepeat: 1.15,
     counterRisk: 0.9,
   }),
   [BoardPhase.Midgame]: Object.freeze({
@@ -48,6 +52,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     inactivity: 1,
     repeatMove: 1,
     backtrack: 1,
+    samePieceStreak: 1,
+    sameTypeRepeat: 1,
     counterRisk: 1,
   }),
   [BoardPhase.Endgame]: Object.freeze({
@@ -61,6 +67,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     inactivity: 0.65,
     repeatMove: 1.18,
     backtrack: 1.18,
+    samePieceStreak: 0.9,
+    sameTypeRepeat: 0.84,
     counterRisk: 1.22,
   }),
 });
@@ -71,6 +79,11 @@ function coordKey(coord) {
 
 function coordEquals(a, b) {
   return a?.x === b?.x && a?.y === b?.y && a?.z === b?.z;
+}
+
+function inferPieceTypeFromId(pieceId) {
+  const parts = String(pieceId ?? "").split("-");
+  return parts.length >= 2 ? parts[1] : PIECE_TYPES.Knight;
 }
 
 function getPhaseWeights(weights, boardPhase) {
@@ -86,6 +99,8 @@ function getPhaseWeights(weights, boardPhase) {
     inactivity: weights.inactivity * multipliers.inactivity,
     repeatMove: weights.repeatMove * multipliers.repeatMove,
     backtrack: weights.backtrack * multipliers.backtrack,
+    samePieceStreak: weights.samePieceStreak * multipliers.samePieceStreak,
+    sameTypeRepeat: weights.sameTypeRepeat * multipliers.sameTypeRepeat,
     counterRisk: weights.counterRisk * multipliers.counterRisk,
   };
 }
@@ -112,6 +127,7 @@ export function evaluateHeuristicMove({
     development: 0,
     inactivity: 0,
     repetition: 0,
+    diversity: 0,
     counterRisk: 0,
     boardPhase: resolvedBoardPhase,
   };
@@ -149,7 +165,7 @@ export function evaluateHeuristicMove({
   }
 
   const pieceMoveCount = behaviorContext?.pieceMoveCountsById?.get?.(move.pieceId) ?? 0;
-  if (pieceMoveCount === 0) {
+  if (pieceMoveCount === 0 && movingPiece?.type !== PIECE_TYPES.King) {
     breakdown.development = phaseWeights.development;
   }
 
@@ -167,6 +183,22 @@ export function evaluateHeuristicMove({
     breakdown.repetition -= phaseWeights.backtrack;
   }
 
+  const samePieceStreakPenalty = Math.max(0, recentSamePiece.length - 1) * phaseWeights.samePieceStreak;
+  breakdown.diversity -= Math.min(samePieceStreakPenalty, phaseWeights.samePieceStreak * 4);
+
+  const movingType = movingPiece?.type ?? inferPieceTypeFromId(move.pieceId);
+  if (movingType !== PIECE_TYPES.King) {
+    const recentSameType = recentMoves.filter((entry) => {
+      const entryType = inferPieceTypeFromId(entry?.pieceId);
+      return entryType === movingType;
+    }).length;
+
+    if (recentSameType >= 3) {
+      const sameTypePenalty = Math.min(4, recentSameType - 2) * phaseWeights.sameTypeRepeat;
+      breakdown.diversity -= sameTypePenalty;
+    }
+  }
+
   const score = breakdown.capture
     + breakdown.center
     + breakdown.mobility
@@ -176,6 +208,7 @@ export function evaluateHeuristicMove({
     + breakdown.development
     + breakdown.inactivity
     + breakdown.repetition
+    + breakdown.diversity
     + breakdown.counterRisk;
 
   return { score, breakdown, boardPhase: resolvedBoardPhase };
