@@ -4,6 +4,9 @@ export const DEFAULT_AI_WEIGHTS = Object.freeze({
   capture: 1.0,
   center: 0.02,
   mobility: 0.05,
+  threatened: 0.2,
+  defended: 0.03,
+  kingSafety: 0.6,
 });
 
 export const PIECE_VALUE = Object.freeze({
@@ -14,11 +17,18 @@ export const PIECE_VALUE = Object.freeze({
   [PIECE_TYPES.Knight]: 3,
 });
 
-export function evaluateHeuristicMove({ move, matchState, legalMoves, weights = DEFAULT_AI_WEIGHTS }) {
+function coordKey(coord) {
+  return `${coord.x},${coord.y},${coord.z}`;
+}
+
+export function evaluateHeuristicMove({ move, matchState, legalMoves, threatContext = null, weights = DEFAULT_AI_WEIGHTS }) {
   const breakdown = {
     capture: 0,
     center: 0,
     mobility: 0,
+    threat: 0,
+    defense: 0,
+    kingSafety: 0,
   };
 
   if (move?.capturedPieceId) {
@@ -34,6 +44,24 @@ export function evaluateHeuristicMove({ move, matchState, legalMoves, weights = 
   const ownPieceOptions = legalMoves.filter((candidate) => candidate.pieceId === move.pieceId).length;
   breakdown.mobility = ownPieceOptions * weights.mobility;
 
-  const score = breakdown.capture + breakdown.center + breakdown.mobility;
+  const destinationKey = coordKey(move.to);
+  const opponentAttackers = threatContext?.opponent?.attackCounts?.get(destinationKey) ?? 0;
+  const friendlySupport = threatContext?.friendly?.attackCounts?.get(destinationKey) ?? 0;
+
+  breakdown.threat = -(opponentAttackers * weights.threatened);
+  breakdown.defense = friendlySupport * weights.defended;
+
+  const movingPiece = matchState?.pieces?.find((piece) => piece.id === move.pieceId);
+  if (movingPiece?.type === PIECE_TYPES.King && opponentAttackers > 0) {
+    breakdown.kingSafety = -(opponentAttackers * weights.kingSafety);
+  }
+
+  const score = breakdown.capture
+    + breakdown.center
+    + breakdown.mobility
+    + breakdown.threat
+    + breakdown.defense
+    + breakdown.kingSafety;
+
   return { score, breakdown };
 }

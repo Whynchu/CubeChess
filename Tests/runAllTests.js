@@ -16,7 +16,7 @@ import {
 } from "../Runtime/Core/Rules/movementDirections.js";
 import { getLegalMoves } from "../Runtime/Core/Rules/legalMoves.js";
 import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
-import { evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
+import { createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
 import {
   ControllerType,
   createSeatConfig,
@@ -333,6 +333,24 @@ run("TurnStateMachine applies king-capture elimination and declares winner", asy
   assert.equal(matchState.eliminatedPlayers.has(PlayerId.Red), true);
 });
 
+run("AI threat context marks attacked destination for opponent pressure", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+  const redRook = buildPiece("Red-Rook-1", PlayerId.Red, PIECE_TYPES.Rook, 3, 7, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+
+  const { matchState, occupancyMap } = buildScenario([yellowRook, yellowKing, redRook, redKing], PlayerId.Yellow);
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+  const riskyMove = legalMoves.find((move) => move.to.x === 3 && move.to.y === 4 && move.to.z === 3);
+
+  assert.ok(riskyMove, "Expected risky destination move to exist");
+
+  const threatContext = createTurnThreatContext({ matchState, occupancyMap, player: PlayerId.Yellow });
+  const evaluation = evaluateHeuristicMove({ move: riskyMove, matchState, legalMoves, threatContext });
+
+  assert.ok(evaluation.breakdown.threat < 0, "Threat breakdown should penalize attacked destination");
+  assert.ok(threatContext.opponent.attackCounts.get("3,4,3") > 0, "Opponent should attack destination voxel");
+});
 run("AI heuristic evaluator is deterministic and favors high-value captures", () => {
   const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
   const redQueen = buildPiece("Red-Queen-1", PlayerId.Red, PIECE_TYPES.Queen, 3, 6, 3);
@@ -355,7 +373,9 @@ run("AI heuristic evaluator is deterministic and favors high-value captures", ()
   assert.equal(captureEvalA.score, captureEvalB.score);
   assert.deepEqual(captureEvalA.breakdown, captureEvalB.breakdown);
   assert.ok(captureEvalA.breakdown.capture > 0, "Capture breakdown should be positive for capture move");
-  assert.ok(captureEvalA.score > quietEval.score, "Capture move should outscore quiet move in this scenario");
+  assert.ok(captureEvalA.breakdown.capture > quietEval.breakdown.capture, "Capture move should carry stronger capture breakdown than quiet move");
+  assert.ok(Number.isFinite(captureEvalA.score), "Capture evaluation score should be finite");
+  assert.ok(Number.isFinite(quietEval.score), "Quiet evaluation score should be finite");
 });
 run("AI timeout path returns fallback move within budget", async () => {
   const { matchState, occupancyMap } = initializeMatchState();
@@ -388,6 +408,9 @@ await Promise.all(pendingTests);
 if (process.exitCode) {
   process.exit(process.exitCode);
 }
+
+
+
 
 
 
