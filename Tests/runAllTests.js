@@ -16,7 +16,7 @@ import {
 } from "../Runtime/Core/Rules/movementDirections.js";
 import { getLegalMoves } from "../Runtime/Core/Rules/legalMoves.js";
 import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
-import { createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
+import { BoardPhase, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
 import {
   ControllerType,
   createSeatConfig,
@@ -333,6 +333,63 @@ run("TurnStateMachine applies king-capture elimination and declares winner", asy
   assert.equal(matchState.eliminatedPlayers.has(PlayerId.Red), true);
 });
 
+run("AI phase classifier identifies opening, midgame, and endgame", () => {
+  const opening = initializeMatchState().matchState;
+  opening.turnCount = 4;
+  assert.equal(classifyBoardPhase(opening), BoardPhase.Opening);
+
+  const midgame = initializeMatchState().matchState;
+  midgame.turnCount = 20;
+  const removableMid = midgame.pieces.filter((piece) => piece.type !== PIECE_TYPES.King).slice(0, 4);
+  for (const piece of removableMid) {
+    piece.alive = false;
+  }
+  assert.equal(classifyBoardPhase(midgame), BoardPhase.Midgame);
+
+  const endgame = initializeMatchState().matchState;
+  endgame.turnCount = 36;
+  for (const piece of endgame.pieces) {
+    if (piece.type !== PIECE_TYPES.King) {
+      piece.alive = false;
+    }
+  }
+  assert.equal(classifyBoardPhase(endgame), BoardPhase.Endgame);
+});
+run("AI evaluator scales development pressure by board phase", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+
+  const { matchState, occupancyMap } = buildScenario([yellowRook, redKing, yellowKing], PlayerId.Yellow);
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+  const candidateMove = legalMoves[0];
+
+  assert.ok(candidateMove, "Expected at least one legal rook move");
+
+  const behaviorContext = {
+    pieceMoveCountsById: new Map(),
+    recentMoves: [],
+  };
+
+  const openingEval = evaluateHeuristicMove({
+    move: candidateMove,
+    matchState,
+    legalMoves,
+    behaviorContext,
+    boardPhase: BoardPhase.Opening,
+  });
+
+  const endgameEval = evaluateHeuristicMove({
+    move: candidateMove,
+    matchState,
+    legalMoves,
+    behaviorContext,
+    boardPhase: BoardPhase.Endgame,
+  });
+
+  assert.ok(openingEval.breakdown.development > endgameEval.breakdown.development, "Opening should incentivize development more than endgame");
+  assert.ok(openingEval.score > endgameEval.score, "Opening score should increase for fresh-piece activation");
+});
 run("AI threat context marks attacked destination for opponent pressure", () => {
   const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
   const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
