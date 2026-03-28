@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CubeChess" />
+    <meta name="theme-color" content="#0a0e27" />
+    <title>CubeChess - 8-Player Voxel Strategy</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="app"></canvas>
+
+    <div class="turn-panel" id="turnPanel">
+      <span class="turn-panel-label">Current Turn</span>
+      <span class="turn-panel-value" id="currentTurn">Turn 1 • Yellow</span>
+    </div>
+
+    <div class="hud is-collapsed" id="hud">
+      <div class="hud-topbar">
+        <h1>CubeChess</h1>
+        <div class="hud-topbar-right">
+          <span class="topbar-turn" id="turn">Last: -</span>
+          <button id="hudToggleBtn" class="hud-toggle-btn" type="button" aria-expanded="false">Expand</button>
+        </div>
+      </div>
+
+      <div class="hud-body" id="hudBody">
+        <p>8-Player Voxel Strategy</p>
+
+        <div class="legend">
+          <div class="legend-item"><span class="dot yellow"></span><span>Yellow</span></div>
+          <div class="legend-item"><span class="dot red"></span><span>Red</span></div>
+          <div class="legend-item"><span class="dot purple"></span><span>Purple</span></div>
+          <div class="legend-item"><span class="dot blue"></span><span>Blue</span></div>
+          <div class="legend-item"><span class="dot green"></span><span>Green</span></div>
+          <div class="legend-item"><span class="dot orange"></span><span>Orange</span></div>
+          <div class="legend-item"><span class="dot pink"></span><span>Pink</span></div>
+          <div class="legend-item"><span class="dot cyan"></span><span>Cyan</span></div>
+        </div>
+
+        <div class="status-row">
+          <span class="status-label">Status</span>
+          <span class="status-value" id="paused">Running</span>
+        </div>
+
+        <div class="controls">
+          <button id="pauseBtn" type="button">⏸ Pause</button>
+          <button id="stepBtn" type="button">⏭ Step</button>
+        </div>
+
+        <div class="controls full-width">
+          <button id="resetBtn" type="button">🔄 Reset</button>
+        </div>
+
+        <div class="controls">
+          <label>
+            ⚡ Speed
+            <select id="speedSelect">
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1x</option>
+              <option value="2">2x</option>
+              <option value="4">4x</option>
+              <option value="8">8x</option>
+              <option value="16">16x</option>
+              <option value="32">32x</option>
+            </select>
+          </label>
+          <label>
+            🎲 Seed
+            <select id="varietySelect">
+              <option value="deterministic">Deterministic</option>
+              <option value="chaotic" selected>Chaotic</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="follow-label">
+          <input id="followToggle" type="checkbox" />
+          📷 Follow active piece
+        </label>
+
+        <label class="follow-label">
+          <input id="autoReplayToggle" type="checkbox" checked />
+          🔁 Auto replay after victory
+        </label>
+        <label class="follow-label">
+          <input id="experimentalLightToggle" type="checkbox" />
+          ✨ Experimental piece light
+        </label>
+
+        <label class="follow-label">
+          <input id="experimentalBranchDepthToggle" type="checkbox" />
+          🌿 Experimental branch/depth filter
+        </label>
+
+        <div class="status-row">
+          <span class="status-label">AI Time</span>
+          <span class="status-value" id="metrics">—</span>
+        </div>
+
+        <p class="status" id="status"></p>
+      </div>
+    </div>
+
+    <div class="winner-overlay" id="winnerOverlay" hidden>
+      <div class="winner-card">
+        <p class="winner-title" id="winnerText">Winner</p>
+        <div class="winner-meter" id="winnerMeter">
+          <div class="winner-meter-fill" id="winnerTimerFill"></div>
+        </div>
+        <p class="winner-timer" id="winnerTimerLabel">Replay in 10s</p>
+      </div>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
+
+
+
+
+
+

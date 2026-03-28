@@ -11,6 +11,7 @@ export const DEFAULT_AI_WEIGHTS = Object.freeze({
   inactivity: 0.05,
   repeatMove: 0.3,
   backtrack: 0.22,
+  counterRisk: 0.1,
 });
 
 export const PIECE_VALUE = Object.freeze({
@@ -47,6 +48,7 @@ export function evaluateHeuristicMove({
     development: 0,
     inactivity: 0,
     repetition: 0,
+    counterRisk: 0,
   };
 
   if (move?.capturedPieceId) {
@@ -70,8 +72,15 @@ export function evaluateHeuristicMove({
   breakdown.defense = friendlySupport * weights.defended;
 
   const movingPiece = matchState?.pieces?.find((piece) => piece.id === move.pieceId);
+  const movingPieceValue = PIECE_VALUE[movingPiece?.type] ?? 1;
+
   if (movingPiece?.type === PIECE_TYPES.King && opponentAttackers > 0) {
     breakdown.kingSafety = -(opponentAttackers * weights.kingSafety);
+  }
+
+  const netPressure = Math.max(0, opponentAttackers - friendlySupport);
+  if (netPressure > 0) {
+    breakdown.counterRisk = -(netPressure * movingPieceValue * weights.counterRisk);
   }
 
   const pieceMoveCount = behaviorContext?.pieceMoveCountsById?.get?.(move.pieceId) ?? 0;
@@ -101,7 +110,8 @@ export function evaluateHeuristicMove({
     + breakdown.kingSafety
     + breakdown.development
     + breakdown.inactivity
-    + breakdown.repetition;
+    + breakdown.repetition
+    + breakdown.counterRisk;
 
   return { score, breakdown };
 }

@@ -351,6 +351,33 @@ run("AI threat context marks attacked destination for opponent pressure", () => 
   assert.ok(evaluation.breakdown.threat < 0, "Threat breakdown should penalize attacked destination");
   assert.ok(threatContext.opponent.attackCounts.get("3,4,3") > 0, "Opponent should attack destination voxel");
 });
+run("AI evaluator applies counter-risk penalty when destination has net opponent pressure", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+  const redRook = buildPiece("Red-Rook-1", PlayerId.Red, PIECE_TYPES.Rook, 3, 7, 3);
+  const redQueen = buildPiece("Red-Queen-1", PlayerId.Red, PIECE_TYPES.Queen, 7, 4, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowRook, yellowKing, redRook, redQueen, redKing],
+    PlayerId.Yellow
+  );
+
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+  const riskyMove = legalMoves.find((move) => move.to.x === 3 && move.to.y === 4 && move.to.z === 3);
+  const saferMove = legalMoves.find((move) => move.to.x === 2 && move.to.y === 3 && move.to.z === 3);
+
+  assert.ok(riskyMove, "Expected risky destination move to exist");
+  assert.ok(saferMove, "Expected safer destination move to exist");
+
+  const threatContext = createTurnThreatContext({ matchState, occupancyMap, player: PlayerId.Yellow });
+  const riskyEval = evaluateHeuristicMove({ move: riskyMove, matchState, legalMoves, threatContext });
+  const saferEval = evaluateHeuristicMove({ move: saferMove, matchState, legalMoves, threatContext });
+
+  assert.ok(riskyEval.breakdown.counterRisk < 0, "Risky move should incur counter-risk penalty");
+  assert.ok(saferEval.breakdown.counterRisk >= riskyEval.breakdown.counterRisk, "Safer move should not be penalized more than risky move");
+  assert.ok(saferEval.score > riskyEval.score, "Safer move should outscore risky move under counter-risk weighting");
+});
 run("AI heuristic evaluator is deterministic and favors high-value captures", () => {
   const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
   const redQueen = buildPiece("Red-Queen-1", PlayerId.Red, PIECE_TYPES.Queen, 3, 6, 3);
