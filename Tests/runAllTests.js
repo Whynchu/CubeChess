@@ -16,7 +16,7 @@ import {
 } from "../Runtime/Core/Rules/movementDirections.js";
 import { getLegalMoves } from "../Runtime/Core/Rules/legalMoves.js";
 import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
-import { BoardPhase, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
+import { applyDangerAwareRescoring, BoardPhase, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
 import {
   ControllerType,
   createSeatConfig,
@@ -389,6 +389,45 @@ run("AI evaluator scales development pressure by board phase", () => {
 
   assert.ok(openingEval.breakdown.development > endgameEval.breakdown.development, "Opening should incentivize development more than endgame");
   assert.ok(openingEval.score > endgameEval.score, "Opening score should increase for fresh-piece activation");
+});
+run("AI danger-aware rescoring penalizes lines with strong opponent replies", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+  const redRook = buildPiece("Red-Rook-1", PlayerId.Red, PIECE_TYPES.Rook, 3, 6, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+  const blueRook = buildPiece("Blue-Rook-1", PlayerId.Blue, PIECE_TYPES.Rook, 3, 7, 3);
+  const blueKing = buildPiece("Blue-King-1", PlayerId.Blue, PIECE_TYPES.King, 7, 0, 7);
+
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowRook, yellowKing, redRook, redKing, blueRook, blueKing],
+    PlayerId.Yellow
+  );
+
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+  const captureMove = legalMoves.find((move) => move.capturedPieceId === redRook.id);
+
+  assert.ok(captureMove, "Expected capture move against red rook");
+
+  const threatContext = createTurnThreatContext({ matchState, occupancyMap, player: PlayerId.Yellow });
+  const baseScore = evaluateHeuristicMove({
+    move: captureMove,
+    matchState,
+    legalMoves,
+    threatContext,
+  }).score;
+
+  const rescored = applyDangerAwareRescoring({
+    scoredMoves: [{ move: captureMove, score: baseScore }],
+    matchState,
+    player: PlayerId.Yellow,
+    maxCandidates: 1,
+    opponentMoveLimit: 40,
+    dangerWeight: 1,
+  });
+
+  assert.equal(rescored.length, 1);
+  assert.ok(rescored[0].dangerPenalty > 0, "Capture line should receive danger penalty from opponent response");
+  assert.ok(rescored[0].score < baseScore, "Danger-aware score should be lower than base score when reply risk exists");
 });
 run("AI threat context marks attacked destination for opponent pressure", () => {
   const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
