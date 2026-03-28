@@ -7,6 +7,10 @@ export const DEFAULT_AI_WEIGHTS = Object.freeze({
   threatened: 0.2,
   defended: 0.03,
   kingSafety: 0.6,
+  development: 0.12,
+  inactivity: 0.05,
+  repeatMove: 0.3,
+  backtrack: 0.22,
 });
 
 export const PIECE_VALUE = Object.freeze({
@@ -21,7 +25,18 @@ function coordKey(coord) {
   return `${coord.x},${coord.y},${coord.z}`;
 }
 
-export function evaluateHeuristicMove({ move, matchState, legalMoves, threatContext = null, weights = DEFAULT_AI_WEIGHTS }) {
+function coordEquals(a, b) {
+  return a?.x === b?.x && a?.y === b?.y && a?.z === b?.z;
+}
+
+export function evaluateHeuristicMove({
+  move,
+  matchState,
+  legalMoves,
+  threatContext = null,
+  behaviorContext = null,
+  weights = DEFAULT_AI_WEIGHTS,
+}) {
   const breakdown = {
     capture: 0,
     center: 0,
@@ -29,6 +44,9 @@ export function evaluateHeuristicMove({ move, matchState, legalMoves, threatCont
     threat: 0,
     defense: 0,
     kingSafety: 0,
+    development: 0,
+    inactivity: 0,
+    repetition: 0,
   };
 
   if (move?.capturedPieceId) {
@@ -56,12 +74,34 @@ export function evaluateHeuristicMove({ move, matchState, legalMoves, threatCont
     breakdown.kingSafety = -(opponentAttackers * weights.kingSafety);
   }
 
+  const pieceMoveCount = behaviorContext?.pieceMoveCountsById?.get?.(move.pieceId) ?? 0;
+  if (pieceMoveCount === 0) {
+    breakdown.development = weights.development;
+  }
+
+  breakdown.inactivity = -(Math.min(pieceMoveCount, 8) * weights.inactivity);
+
+  const recentMoves = Array.isArray(behaviorContext?.recentMoves) ? behaviorContext.recentMoves : [];
+  const recentSamePiece = recentMoves.filter((entry) => entry?.pieceId === move.pieceId);
+
+  if (recentSamePiece.some((entry) => coordEquals(entry.to, move.to))) {
+    breakdown.repetition -= weights.repeatMove;
+  }
+
+  const lastSamePiece = recentSamePiece.length > 0 ? recentSamePiece[recentSamePiece.length - 1] : null;
+  if (lastSamePiece && coordEquals(lastSamePiece.from, move.to) && coordEquals(lastSamePiece.to, move.from)) {
+    breakdown.repetition -= weights.backtrack;
+  }
+
   const score = breakdown.capture
     + breakdown.center
     + breakdown.mobility
     + breakdown.threat
     + breakdown.defense
-    + breakdown.kingSafety;
+    + breakdown.kingSafety
+    + breakdown.development
+    + breakdown.inactivity
+    + breakdown.repetition;
 
   return { score, breakdown };
 }

@@ -377,6 +377,38 @@ run("AI heuristic evaluator is deterministic and favors high-value captures", ()
   assert.ok(Number.isFinite(captureEvalA.score), "Capture evaluation score should be finite");
   assert.ok(Number.isFinite(quietEval.score), "Quiet evaluation score should be finite");
 });
+run("AI evaluator applies development and repetition penalties from behavior context", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+
+  const { matchState, occupancyMap } = buildScenario([yellowRook, redKing, yellowKing], PlayerId.Yellow);
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+  const candidateMove = legalMoves[0];
+
+  assert.ok(candidateMove, "Expected at least one legal rook move");
+
+  const freshContext = {
+    pieceMoveCountsById: new Map(),
+    recentMoves: [],
+  };
+
+  const repeatedContext = {
+    pieceMoveCountsById: new Map([[yellowRook.id, 6]]),
+    recentMoves: [
+      { pieceId: yellowRook.id, from: candidateMove.from, to: candidateMove.to },
+      { pieceId: yellowRook.id, from: candidateMove.to, to: candidateMove.from },
+    ],
+  };
+
+  const freshEval = evaluateHeuristicMove({ move: candidateMove, matchState, legalMoves, behaviorContext: freshContext });
+  const repeatedEval = evaluateHeuristicMove({ move: candidateMove, matchState, legalMoves, behaviorContext: repeatedContext });
+
+  assert.ok(freshEval.breakdown.development > 0, "Fresh piece should get development bonus");
+  assert.ok(repeatedEval.breakdown.inactivity < 0, "Repeated piece should get inactivity penalty");
+  assert.ok(repeatedEval.breakdown.repetition < 0, "Repeated/backtrack move should get repetition penalty");
+  assert.ok(freshEval.score > repeatedEval.score, "Fresh context should outscore repeated context for same move");
+});
 run("AI timeout path returns fallback move within budget", async () => {
   const { matchState, occupancyMap } = initializeMatchState();
   const machine = new TurnStateMachine({
@@ -408,6 +440,7 @@ await Promise.all(pendingTests);
 if (process.exitCode) {
   process.exit(process.exitCode);
 }
+
 
 
 

@@ -2,13 +2,13 @@ import * as THREE from "three";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/controls/OrbitControls.js";
 import { FBXLoader } from "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/loaders/FBXLoader.js";
 
-import { initializeMatchState } from "../Runtime/Core/GameState/initializeMatchState.js";
-import { TURN_ORDER, PIECE_TYPES } from "../Runtime/Core/GameState/constants.js";
-import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
-import { presetAllAI } from "../Runtime/Core/Seats/index.js";
-import { createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
+import { initializeMatchState } from "../../Runtime/Core/GameState/initializeMatchState.js";
+import { TURN_ORDER, PIECE_TYPES } from "../../Runtime/Core/GameState/constants.js";
+import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
+import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
+import { evaluateHeuristicMove } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.56";
+const VERSION = "0.1.55";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 const AI_BUDGET_MAX_MS = 10000;
@@ -837,17 +837,6 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
     await delayWithSignal(Math.max(30, Math.round(80 / Math.max(0.5, speedMultiplier))), signal);
   }
 
-  const threatContext = createTurnThreatContext({
-    matchState,
-    occupancyMap,
-    player: context.player ?? matchState.activePlayer,
-  });
-
-  const behaviorContext = {
-    pieceMoveCountsById: aiPieceMoveCounts,
-    recentMoves: aiRecentMoves,
-  };
-
   const scored = [];
 
   for (const move of legalMoves) {
@@ -855,13 +844,7 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
       break;
     }
 
-    const evaluated = evaluateHeuristicMove({
-      move,
-      matchState,
-      legalMoves,
-      threatContext,
-      behaviorContext,
-    });
+    const evaluated = evaluateHeuristicMove({ move, matchState, legalMoves });
     scored.push({ move, score: evaluated.score, breakdown: evaluated.breakdown });
   }
 
@@ -955,9 +938,6 @@ const defaultAutoReplay = autoReplayToggle ? autoReplayToggle.checked : true;
 let autoReplayEnabled = defaultAutoReplay;
 let winnerCountdownEndAtMs = 0;
 let lastMoveHudText = "";
-const AI_RECENT_MOVE_LIMIT = 24;
-let aiPieceMoveCounts = new Map();
-let aiRecentMoves = [];
 
 function hexToCssColor(hex) {
   return `#${hex.toString(16).padStart(6, "0")}`;
@@ -1067,8 +1047,6 @@ function resetMatch({ resume = true } = {}) {
   telemetry.roundTurnCount = 0;
   telemetry.roundStartMs = performance.now();
   lastMoveHudText = "";
-  aiPieceMoveCounts = new Map();
-  aiRecentMoves = [];
 
   const initial = initializeMatchState();
   matchState = initial.matchState;
@@ -1734,29 +1712,10 @@ function recenterCameraTarget() {
   controls.target.set(0, 0, 0);
 }
 
-function recordAIMoveBehavior(result) {
-  const move = result?.move;
-  if (!move?.pieceId) {
-    return;
-  }
-
-  aiPieceMoveCounts.set(move.pieceId, (aiPieceMoveCounts.get(move.pieceId) ?? 0) + 1);
-  aiRecentMoves.push({
-    player: result.player ?? null,
-    pieceId: move.pieceId,
-    from: move.from,
-    to: move.to,
-  });
-
-  if (aiRecentMoves.length > AI_RECENT_MOVE_LIMIT) {
-    aiRecentMoves.splice(0, aiRecentMoves.length - AI_RECENT_MOVE_LIMIT);
-  }
-}
 function handleTurnResult(result) {
   clearDecisionOverlay();
   if (result?.move) {
     lastMoveHudText = formatMoveHudText(result.move);
-    recordAIMoveBehavior(result);
     pushMoveAnimation(result.move.pieceId, result.move.from, result.move.to);
     if (result.move.capturedPieceId) {
       pushCaptureAnimation(result.move.capturedPieceId);
@@ -1984,12 +1943,6 @@ recenterCameraTarget();
 primePieceModels();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
-
-
-
-
-
-
 
 
 
