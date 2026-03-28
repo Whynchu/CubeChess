@@ -4,6 +4,7 @@ Milestone: `M4 - AI Autoplay and Spectator Experience`
 Duration target: `5-7 days`
 Source plan: `Docs/implementation/cube_chess_implementation_plan.md`
 Depends on: `Docs/implementation/cube_chess_m3_task_board.md`
+Follow-on AI strengthening plan: `Docs/implementation/cube_chess_ai_champion_plan.md`
 
 ## 1. Milestone Goal
 Deliver a compelling AI-first "digital lava lamp" experience: fast, readable AI-vs-AI matches with optional human seats, strict <= 10 second AI turns, and high-confidence autoplay stability.
@@ -201,3 +202,16 @@ Day 6-7 (buffer):
 - [ ] KPIs captured for turn latency and round pace.
 - [ ] Soak run completed (100+ matches) with no critical failures.
 - [ ] Handoff notes published for M5.
+
+## 11. Follow-On AI Work
+Once the M4 baseline loop is stable, continue AI strengthening through:
+- evaluator v2
+- anti-loop and anti-stale systems
+- budgeted 2-ply search
+- decision trace export
+- self-play data generation
+
+Reference:
+- `Docs/implementation/cube_chess_ai_champion_plan.md`
+
+

@@ -34,6 +34,9 @@ Translate the Cube Chess design into a buildable, testable execution plan for a 
 - Cosmetics, progression systems, store, battle pass, guilds.
 - Alternative rule variants (checkmate mode, teams, custom board sizes).
 
+AI progression beyond the MVP baseline heuristic is tracked separately in:
+- `Docs/implementation/cube_chess_ai_champion_plan.md`
+
 ## 4. Technical Architecture
 ### 4.1 Core Runtime Modules
 - `GameState`: immutable or transaction-safe board snapshot and metadata.
@@ -122,6 +125,9 @@ Deliverables:
 - AI-vs-AI continuous autoplay loop for 4 factions.
 - Spectator controls: pause/resume, speed presets, follow-active-piece camera option.
 - Turn-time budgeting and timeout fallback behavior.
+
+Follow-on AI strengthening after the baseline spectator loop is documented in:
+- `Docs/implementation/cube_chess_ai_champion_plan.md`
 
 Acceptance criteria:
 - AI completes turns at <= 10 seconds each (P95 on target device).
@@ -236,4 +242,6 @@ Content/
 4. Implement AI move scoring stub and wire AI turn budget timer.
 5. Build autoplay loop and verify <= 10 second P95 turn time on device.
 6. Implement seat controller and validate 1 human + 3 AI match flow.
+
+
 

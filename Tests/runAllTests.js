@@ -16,6 +16,7 @@ import {
 } from "../Runtime/Core/Rules/movementDirections.js";
 import { getLegalMoves } from "../Runtime/Core/Rules/legalMoves.js";
 import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
+import { evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
 import {
   ControllerType,
   createSeatConfig,
@@ -332,6 +333,30 @@ run("TurnStateMachine applies king-capture elimination and declares winner", asy
   assert.equal(matchState.eliminatedPlayers.has(PlayerId.Red), true);
 });
 
+run("AI heuristic evaluator is deterministic and favors high-value captures", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const redQueen = buildPiece("Red-Queen-1", PlayerId.Red, PIECE_TYPES.Queen, 3, 6, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+
+  const { matchState, occupancyMap } = buildScenario([yellowRook, redQueen, redKing, yellowKing], PlayerId.Yellow);
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+
+  const captureMove = legalMoves.find((move) => move.capturedPieceId === redQueen.id);
+  const quietMove = legalMoves.find((move) => !move.capturedPieceId);
+
+  assert.ok(captureMove, "Expected a capture move against the queen");
+  assert.ok(quietMove, "Expected at least one non-capture move");
+
+  const captureEvalA = evaluateHeuristicMove({ move: captureMove, matchState, legalMoves });
+  const captureEvalB = evaluateHeuristicMove({ move: captureMove, matchState, legalMoves });
+  const quietEval = evaluateHeuristicMove({ move: quietMove, matchState, legalMoves });
+
+  assert.equal(captureEvalA.score, captureEvalB.score);
+  assert.deepEqual(captureEvalA.breakdown, captureEvalB.breakdown);
+  assert.ok(captureEvalA.breakdown.capture > 0, "Capture breakdown should be positive for capture move");
+  assert.ok(captureEvalA.score > quietEval.score, "Capture move should outscore quiet move in this scenario");
+});
 run("AI timeout path returns fallback move within budget", async () => {
   const { matchState, occupancyMap } = initializeMatchState();
   const machine = new TurnStateMachine({
@@ -363,6 +388,8 @@ await Promise.all(pendingTests);
 if (process.exitCode) {
   process.exit(process.exitCode);
 }
+
+
 
 
 
