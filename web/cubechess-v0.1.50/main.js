@@ -2,10 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/controls/OrbitControls.js";
 import { FBXLoader } from "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/loaders/FBXLoader.js";
 
-import { initializeMatchState } from "../Runtime/Core/GameState/initializeMatchState.js";
-import { TURN_ORDER, PIECE_TYPES } from "../Runtime/Core/GameState/constants.js";
-import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
-import { presetAllAI } from "../Runtime/Core/Seats/index.js";
+import { initializeMatchState } from "../../Runtime/Core/GameState/initializeMatchState.js";
+import { TURN_ORDER, PIECE_TYPES } from "../../Runtime/Core/GameState/constants.js";
+import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
+import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
 
 const VERSION = "0.1.50";
 const BOARD_SIZE = 8;
@@ -247,12 +247,12 @@ const MODEL_GLOW_BASE_OPACITY = 0.24;
 const MODEL_GLOW_KING_BASE_OPACITY = 0.3;
 
 const PIECE_MODEL_PATHS = Object.freeze({
-  [PIECE_TYPES.Pawn]: "../Assets/Pieces/Pawn.fbx",
-  [PIECE_TYPES.Rook]: "../Assets/Pieces/Rook.fbx",
-  [PIECE_TYPES.Knight]: "../Assets/Pieces/Knight.fbx",
-  [PIECE_TYPES.Bishop]: "../Assets/Pieces/Bishop.fbx",
-  [PIECE_TYPES.Queen]: "../Assets/Pieces/Queen.fbx",
-  [PIECE_TYPES.King]: "../Assets/Pieces/King.fbx",
+  [PIECE_TYPES.Pawn]: "../../Assets/Pieces/Pawn.fbx",
+  [PIECE_TYPES.Rook]: "../../Assets/Pieces/Rook.fbx",
+  [PIECE_TYPES.Knight]: "../../Assets/Pieces/Knight.fbx",
+  [PIECE_TYPES.Bishop]: "../../Assets/Pieces/Bishop.fbx",
+  [PIECE_TYPES.Queen]: "../../Assets/Pieces/Queen.fbx",
+  [PIECE_TYPES.King]: "../../Assets/Pieces/King.fbx",
 });
 
 const PIECE_MODEL_TARGET_SIZE = Object.freeze({
