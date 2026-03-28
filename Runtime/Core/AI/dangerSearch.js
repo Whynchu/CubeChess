@@ -178,3 +178,82 @@ export function applyDangerAwareRescoring({
     };
   });
 }
+
+
+function nowMs() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function stableSortScoredMoves(scoredMoves) {
+  return [...scoredMoves].sort((a, b) => {
+    if (a.score !== b.score) {
+      return b.score - a.score;
+    }
+    if (a.move.pieceId !== b.move.pieceId) {
+      return a.move.pieceId.localeCompare(b.move.pieceId);
+    }
+    if (a.move.to.x !== b.move.to.x) return a.move.to.x - b.move.to.x;
+    if (a.move.to.y !== b.move.to.y) return a.move.to.y - b.move.to.y;
+    return a.move.to.z - b.move.to.z;
+  });
+}
+
+export function applyDangerAwareIterativeRescoring({
+  scoredMoves,
+  matchState,
+  player,
+  stageCandidateLimits = [8, 16, 24],
+  stageOpponentMoveLimits = [16, 28, 40],
+  dangerWeight = 0.8,
+  budgetMs = 240,
+  signal = null,
+}) {
+  if (!Array.isArray(scoredMoves) || scoredMoves.length === 0) {
+    return {
+      scoredMoves: scoredMoves ?? [],
+      completedStages: 0,
+      timedOut: false,
+    };
+  }
+
+  const stages = Math.min(stageCandidateLimits.length, stageOpponentMoveLimits.length);
+  const safeBudgetMs = Math.max(0, budgetMs);
+  const deadlineMs = nowMs() + safeBudgetMs;
+
+  let bestScored = stableSortScoredMoves(
+    scoredMoves.map((entry) => ({
+      ...entry,
+      dangerPenalty: entry.dangerPenalty ?? 0,
+    }))
+  );
+
+  let completedStages = 0;
+
+  for (let i = 0; i < stages; i += 1) {
+    if (signal?.aborted || nowMs() >= deadlineMs) {
+      break;
+    }
+
+    const rescored = applyDangerAwareRescoring({
+      scoredMoves,
+      matchState,
+      player,
+      maxCandidates: stageCandidateLimits[i],
+      opponentMoveLimit: stageOpponentMoveLimits[i],
+      dangerWeight,
+      signal,
+    });
+
+    bestScored = stableSortScoredMoves(rescored);
+    completedStages += 1;
+  }
+
+  return {
+    scoredMoves: bestScored,
+    completedStages,
+    timedOut: completedStages < stages,
+  };
+}
