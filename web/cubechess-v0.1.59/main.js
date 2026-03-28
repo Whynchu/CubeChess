@@ -57,6 +57,13 @@ function setCurrentTurnLabel(message) {
   }
 }
 
+function getPlayerDisplayName(player) {
+  if (player === "Pink") {
+    return "Magenta";
+  }
+  return player ?? "Unknown";
+}
+
 function setPausedLabel(paused) {
   if (pausedEl) {
     pausedEl.textContent = paused ? "Paused" : "Running";
