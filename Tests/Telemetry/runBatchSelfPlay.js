@@ -13,6 +13,7 @@ import {
   classifyBoardPhase,
   createTurnThreatContext,
   evaluateHeuristicMove,
+  filterImmediateKingCaptureUnsafeCandidates,
   pruneScoredCandidates,
   TranspositionCache,
 } from "../../Runtime/Core/AI/index.js";
@@ -213,10 +214,18 @@ function chooseMove({
   const searchedPool = pruneScoredCandidates(searchedDanger, { limit: p.poolLimit, minPerPiece: 2 });
   const personaPool = searchedPool.filter((e) => entryRisk(e) <= p.maxRisk);
   const finalPool = personaPool.length > 0 ? personaPool : searchedPool;
+  const kingSafetyFilter = filterImmediateKingCaptureUnsafeCandidates({
+    scoredMoves: finalPool,
+    matchState,
+    occupancyMap,
+    player,
+    maxChecks: 16,
+  });
+  const kingSafePool = kingSafetyFilter.filteredMoves;
 
-  let ranked = finalPool;
+  let ranked = kingSafePool;
   if (mode === MODE.Chaotic) {
-    ranked = [...finalPool].map((e, i) => ({ ...e, chaosScore: Number(e.score ?? 0) - chaoticPenalty(e, behaviorContext.recentMoves, player), _i: i }))
+    ranked = [...kingSafePool].map((e, i) => ({ ...e, chaosScore: Number(e.score ?? 0) - chaoticPenalty(e, behaviorContext.recentMoves, player), _i: i }))
       .sort((a, b) => (b.chaosScore - a.chaosScore) || (b.score - a.score) || (a._i - b._i));
   }
 
@@ -247,6 +256,10 @@ function chooseMove({
       usedChaoticRerank: mode === MODE.Chaotic,
       candidatePoolCount: candidatePool.length,
       personaCandidatePoolCount: finalPool.length,
+      kingSafetyCheckedCount: kingSafetyFilter.checkedCount,
+      kingSafetyRejectedCount: kingSafetyFilter.unsafeRejectedCount,
+      kingSafetyFallbackUsed: kingSafetyFilter.usedFallback,
+      kingSafetyPoolCount: kingSafePool.length,
       personaRiskRejectedCount: Math.max(0, searchedPool.length - finalPool.length),
       searchDepthReached: searchResult.depthReached ?? 0,
       searchNodesExpanded: searchResult.nodesExpanded ?? 0,
@@ -460,3 +473,4 @@ if (isDirectRun) {
     process.exitCode = 1;
   });
 }
+

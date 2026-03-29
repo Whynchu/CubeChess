@@ -6,7 +6,7 @@ import { initializeMatchState } from "./runtime/Core/GameState/initializeMatchSt
 import { TURN_ORDER, PIECE_TYPES } from "./runtime/Core/GameState/constants.js";
 import { TurnPhase, TurnStateMachine } from "./runtime/Core/Turn/index.js";
 import { presetAllAI } from "./runtime/Core/Seats/index.js";
-import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "./runtime/Core/AI/index.js";
+import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove, filterImmediateKingCaptureUnsafeCandidates } from "./runtime/Core/AI/index.js";
 
 const VERSION = "0.1.114";
 const BOARD_SIZE = 8;
@@ -36,6 +36,7 @@ const winnerTimerFillEl = document.getElementById("winnerTimerFill");
 const winnerTimerLabelEl = document.getElementById("winnerTimerLabel");
 const eventFlashEl = document.getElementById("eventFlash");
 const eventFlashTextEl = document.getElementById("eventFlashText");
+const playerStatsListEl = document.getElementById("playerStatsList");
 
 let experimentalPieceLightEnabled = experimentalLightToggle?.checked === true;
 let experimentalBranchDepthEnabled = experimentalBranchDepthToggle?.checked === true;
@@ -419,6 +420,18 @@ const AI_PERSONA_REGISTRY = Object.freeze({
 
 const DEFAULT_AI_PERSONA = Object.freeze({ id: "default" });
 
+const PERSONA_LABEL = Object.freeze({
+  default: "Adaptive",
+  red_aggressor: "Aggressor",
+  orange_raider: "Raider",
+  yellow_opportunist: "Opportunist",
+  green_swarm: "Swarm",
+  cyan_tempo: "Tempo",
+  blue_fortress: "Fortress",
+  purple_controller: "Controller",
+  pink_trickster: "Trickster",
+});
+
 function getPersonaProfileForPlayer(player) {
   const profile = AI_PERSONA_REGISTRY[player] ?? DEFAULT_AI_PERSONA;
   return {
@@ -592,6 +605,64 @@ const AI_PERSONA_TUNING = Object.freeze({
     riskGate: Object.freeze({ maxCombinedRisk: 7.6, maxCounterRisk: 4.6 }),
   }),
 });
+
+function getPersonaLabelForPlayer(player) {
+  const profile = getPersonaProfileForPlayer(player);
+  return PERSONA_LABEL[profile.id] ?? profile.id.replaceAll("_", " ");
+}
+
+const sessionWinsByPlayer = new Map(TURN_ORDER.map((player) => [player, 0]));
+let sessionCompletedGames = 0;
+let lastRecordedWinnerGame = 0;
+
+function formatWinRatePct(player) {
+  const wins = sessionWinsByPlayer.get(player) ?? 0;
+  if (sessionCompletedGames <= 0) {
+    return "0.0%";
+  }
+  return `${((wins / sessionCompletedGames) * 100).toFixed(1)}%`;
+}
+
+function updatePlayerStatsPanel() {
+  if (!playerStatsListEl) {
+    return;
+  }
+
+  const rows = TURN_ORDER.map((player) => {
+    const colorClass = String(player ?? "").toLowerCase();
+    const name = getPlayerDisplayName(player);
+    const persona = getPersonaLabelForPlayer(player);
+    const rate = formatWinRatePct(player);
+    const wins = sessionWinsByPlayer.get(player) ?? 0;
+    return `
+      <div class="player-stat-item">
+        <div class="player-stat-main">
+          <span class="dot ${colorClass}"></span>
+          <span class="player-stat-label">
+            <span class="player-stat-name">${name}</span>
+            <span class="player-stat-persona">${persona}</span>
+          </span>
+        </div>
+        <span class="player-stat-winrate">${rate} (${wins})</span>
+      </div>
+    `;
+  });
+
+  playerStatsListEl.innerHTML = rows.join("");
+}
+
+function recordWinnerStats(winner) {
+  if (!winner || !sessionWinsByPlayer.has(winner)) {
+    return;
+  }
+  if (lastRecordedWinnerGame === gameCounter) {
+    return;
+  }
+  lastRecordedWinnerGame = gameCounter;
+  sessionCompletedGames += 1;
+  sessionWinsByPlayer.set(winner, (sessionWinsByPlayer.get(winner) ?? 0) + 1);
+  updatePlayerStatsPanel();
+}
 
 function getPersonaTuning(personaId) {
   return AI_PERSONA_TUNING[personaId] ?? AI_PERSONA_TUNING.default;
@@ -2371,19 +2442,27 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
 
   const personaCandidatePool = applyPersonaRiskGate(candidatePool, personaTuning);
   const personaRiskRejectedCount = Math.max(0, candidatePool.length - personaCandidatePool.length);
-  let selectionPool = personaCandidatePool;
-  let tacticalPool = personaCandidatePool;
+  const kingSafetyFilter = filterImmediateKingCaptureUnsafeCandidates({
+    scoredMoves: personaCandidatePool,
+    matchState,
+    occupancyMap,
+    player,
+    maxChecks: 16,
+  });
+  const kingSafePool = kingSafetyFilter.filteredMoves;
+  let selectionPool = kingSafePool;
+  let tacticalPool = kingSafePool;
   let tacticalProfile = getTacticalProfileForPhase(boardPhase);
   let tacticalFallbackUsed = false;
   let selectedBy = "deterministic_best";
-  let scoreGapTop2 = computeScoreGapTop2(personaCandidatePool);
+  let scoreGapTop2 = computeScoreGapTop2(kingSafePool);
   let samplingTopK = 1;
   let tacticalFilterActive = false;
   let tacticalRejectedCount = 0;
-  const usedChaoticRerank = varietyMode !== VarietyMode.Deterministic && personaCandidatePool.length > 0;
+  const usedChaoticRerank = varietyMode !== VarietyMode.Deterministic && kingSafePool.length > 0;
 
   if (usedChaoticRerank) {
-    selectionPool = buildChaoticSelectionPool(candidatePool, aiRecentMoves, player);
+    selectionPool = buildChaoticSelectionPool(kingSafePool, aiRecentMoves, player);
     const tacticalResult = buildTacticalSelectionPool(selectionPool, boardPhase);
     tacticalPool = tacticalResult.pool;
     tacticalProfile = tacticalResult.profile;
@@ -2393,7 +2472,7 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
     scoreGapTop2 = computeScoreGapTop2(tacticalPool);
   }
 
-  let chosenMove = tacticalPool[0]?.move ?? selectionPool[0]?.move ?? dangerRescored[0]?.move ?? scored[0]?.move ?? legalMoves[0] ?? null;
+  let chosenMove = tacticalPool[0]?.move ?? selectionPool[0]?.move ?? kingSafePool[0]?.move ?? dangerRescored[0]?.move ?? scored[0]?.move ?? legalMoves[0] ?? null;
   if (!chosenMove) {
     clearDecisionOverlay();
     return null;
@@ -2495,6 +2574,10 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
     scoredMoveCount: scored.length,
     candidatePoolCount: candidatePool.length,
     personaCandidatePoolCount: personaCandidatePool.length,
+    kingSafetyCheckedCount: kingSafetyFilter.checkedCount,
+    kingSafetyRejectedCount: kingSafetyFilter.unsafeRejectedCount,
+    kingSafetyFallbackUsed: kingSafetyFilter.usedFallback,
+    kingSafetyPoolCount: kingSafePool.length,
     personaRiskRejectedCount,
     aiBudgetMs,
     dangerBudgetMs,
@@ -3620,6 +3703,7 @@ function handleTurnResult(result) {
 
   if (result?.type === "MatchEnded") {
     const winner = result.winner ?? turnMachine.winner;
+    recordWinnerStats(winner);
     archiveCurrentGameTraces(winner);
     setStatus(`Match ended. Winner: ${winner ?? "None"}`);
     showWinnerOverlay(winner);
@@ -3853,6 +3937,7 @@ updateMetricsHud();
 applyHudCollapsed(window.innerWidth < 900);
 recenterCameraTarget();
 primePieceModels();
+updatePlayerStatsPanel();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
 
