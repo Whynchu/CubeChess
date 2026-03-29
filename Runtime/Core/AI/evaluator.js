@@ -113,6 +113,16 @@ const SUPPORT_REWARD_SCALE = Object.freeze({
   [PIECE_TYPES.Knight]: 0.76,
 });
 
+const OPENING_QUEEN_UNDEVELOPED_TAX = 0.28;
+const OPENING_QUEEN_REUSE_TAX = 0.2;
+const OPENING_QUEEN_UNSUPPORTED_EXTRA = 0.22;
+const OPENING_KNIGHT_INITIATIVE_REWARD = 0.24;
+const OPENING_ROOK_RELEASE_REWARD = 0.12;
+const DIVERSITY_RECENT_WINDOW = 16;
+const DIVERSITY_OVERUSED_TYPE_RATIO = 0.45;
+const DIVERSITY_OVERUSED_TYPE_TAX = 0.2;
+const DIVERSITY_UNDERUSED_TYPE_REWARD = 0.22;
+
 function coordKey(coord) {
   return `${coord.x},${coord.y},${coord.z}`;
 }
@@ -171,6 +181,15 @@ function getOpponentPressureAtDestination(threatContext, destinationKey) {
     opponentPlayerPressureCount,
     opponentAttackersByPlayer,
   };
+}
+
+function buildRecentTypeHistogram(recentMoves) {
+  const histogram = new Map();
+  for (const entry of recentMoves) {
+    const entryType = inferPieceTypeFromId(entry?.pieceId);
+    histogram.set(entryType, (histogram.get(entryType) ?? 0) + 1);
+  }
+  return histogram;
 }
 
 export function evaluateHeuristicMove({
@@ -278,11 +297,45 @@ export function evaluateHeuristicMove({
     breakdown.antiHelper = -(helperPressure * movingPieceValue * pressureRiskScale * phaseWeights.antiHelper);
   }
 
-  const pieceMoveCount = behaviorContext?.pieceMoveCountsById?.get?.(move.pieceId) ?? 0;
+  const pieceMoveCountById = behaviorContext?.pieceMoveCountsById;
+  const pieceMoveCount = pieceMoveCountById?.get?.(move.pieceId) ?? 0;
   if (pieceMoveCount === 0 && movingType !== PIECE_TYPES.King) {
     breakdown.development = phaseWeights.development * developmentScale;
     if (friendlySupport > 0 && movingType !== PIECE_TYPES.Queen) {
       breakdown.development += phaseWeights.development * 0.32;
+    }
+  }
+
+  let undevelopedMinorCount = 0;
+  if (Array.isArray(matchState?.pieces) && movingPiece?.owner) {
+    for (const piece of matchState.pieces) {
+      if (!piece?.alive || piece.owner !== movingPiece.owner) {
+        continue;
+      }
+      if (piece.type !== PIECE_TYPES.Knight && piece.type !== PIECE_TYPES.Bishop && piece.type !== PIECE_TYPES.Rook) {
+        continue;
+      }
+      if ((pieceMoveCountById?.get?.(piece.id) ?? 0) === 0) {
+        undevelopedMinorCount += 1;
+      }
+    }
+  }
+
+  if (resolvedBoardPhase === BoardPhase.Opening) {
+    if (movingType === PIECE_TYPES.Queen && !move?.capturedPieceId) {
+      const undevelopedTax = Math.min(4, undevelopedMinorCount) * phaseWeights.development * OPENING_QUEEN_UNDEVELOPED_TAX;
+      const reuseTax = pieceMoveCount > 0 ? Math.min(3, pieceMoveCount) * phaseWeights.sameTypeRepeat * OPENING_QUEEN_REUSE_TAX : 0;
+      const unsupportedTax = friendlySupport === 0 ? phaseWeights.threatened * OPENING_QUEEN_UNSUPPORTED_EXTRA : 0;
+      breakdown.development -= (undevelopedTax + reuseTax + unsupportedTax);
+    }
+
+    if (movingType === PIECE_TYPES.Knight && pieceMoveCount <= 1) {
+      const centerFactor = Math.max(0, (10.5 - centerDistance) / 10.5);
+      breakdown.development += phaseWeights.development * (OPENING_KNIGHT_INITIATIVE_REWARD + (centerFactor * 0.2));
+    }
+
+    if (movingType === PIECE_TYPES.Rook && pieceMoveCount === 0 && undevelopedMinorCount >= 2) {
+      breakdown.development += phaseWeights.development * OPENING_ROOK_RELEASE_REWARD;
     }
   }
 
@@ -303,15 +356,29 @@ export function evaluateHeuristicMove({
   const samePieceStreakPenalty = Math.max(0, recentSamePiece.length - 1) * phaseWeights.samePieceStreak;
   breakdown.diversity -= Math.min(samePieceStreakPenalty, phaseWeights.samePieceStreak * 4);
 
-  if (movingType !== PIECE_TYPES.King) {
-    const recentSameType = recentMoves.filter((entry) => {
-      const entryType = inferPieceTypeFromId(entry?.pieceId);
-      return entryType === movingType;
-    }).length;
+  const recentWindowMoves = recentMoves.slice(-DIVERSITY_RECENT_WINDOW);
+  const recentTypeHistogram = buildRecentTypeHistogram(recentWindowMoves);
+  const recentSameType = recentTypeHistogram.get(movingType) ?? 0;
 
+  if (movingType !== PIECE_TYPES.King) {
     if (recentSameType >= 3) {
       const sameTypePenalty = Math.min(4, recentSameType - 2) * phaseWeights.sameTypeRepeat;
       breakdown.diversity -= sameTypePenalty;
+    }
+
+    const overusedThreshold = Math.max(4, Math.ceil(recentWindowMoves.length * DIVERSITY_OVERUSED_TYPE_RATIO));
+    if (recentSameType > overusedThreshold) {
+      const overuseUnits = recentSameType - overusedThreshold;
+      breakdown.diversity -= overuseUnits * phaseWeights.sameTypeRepeat * DIVERSITY_OVERUSED_TYPE_TAX;
+    }
+
+    const typeDiversityPool = [PIECE_TYPES.Queen, PIECE_TYPES.Rook, PIECE_TYPES.Bishop, PIECE_TYPES.Knight];
+    const expectedPerType = recentWindowMoves.length > 0 ? (recentWindowMoves.length / typeDiversityPool.length) : 0;
+    if (movingType !== PIECE_TYPES.Queen && expectedPerType > 0) {
+      const underusedThreshold = Math.max(1, Math.floor(expectedPerType * 0.6));
+      if (recentSameType <= underusedThreshold) {
+        breakdown.diversity += phaseWeights.sameTypeRepeat * DIVERSITY_UNDERUSED_TYPE_REWARD;
+      }
     }
   }
 
