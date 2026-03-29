@@ -1,6 +1,6 @@
 {
   "name": "cubechess",
-  "version": "0.1.93",
+  "version": "0.1.94",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "bench:m3": "node Tests/Performance/m3_turn_benchmark.js"
   }
 }
+
 
 
 
