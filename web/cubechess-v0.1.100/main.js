@@ -8,7 +8,7 @@ import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
 import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.101";
+const VERSION = "0.1.102";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 const AI_BUDGET_MAX_MS = 10000;
@@ -99,6 +99,72 @@ controls.maxDistance = 28;
 controls.maxPolarAngle = Math.PI * 0.9;
 controls.minPolarAngle = Math.PI * 0.1;
 controls.enablePan = false;
+const CAMERA_IDLE_ROTATE_DELAY_MS = 10000;
+const CAMERA_IDLE_ROTATE_SPEED = 0.38;
+const CAMERA_IDLE_ISO_LERP = 0.06;
+let lastCameraInteractionMs = performance.now();
+let autoCameraSpinActive = false;
+const initialCameraOffset = camera.position.clone().sub(controls.target);
+const initialCameraSpherical = new THREE.Spherical().setFromVector3(initialCameraOffset);
+const preferredIdlePolar = THREE.MathUtils.clamp(
+  initialCameraSpherical.phi,
+  controls.minPolarAngle + 0.05,
+  controls.maxPolarAngle - 0.05
+);
+
+function markCameraInteraction(nowMs = performance.now()) {
+  lastCameraInteractionMs = nowMs;
+  autoCameraSpinActive = false;
+  controls.autoRotate = false;
+}
+
+function canAutoRotateCamera() {
+  return !(followToggle?.checked);
+}
+
+function updateIdleAutoRotate(nowMs = performance.now()) {
+  if (!canAutoRotateCamera()) {
+    if (autoCameraSpinActive) {
+      autoCameraSpinActive = false;
+      controls.autoRotate = false;
+    }
+    return;
+  }
+
+  if (nowMs - lastCameraInteractionMs < CAMERA_IDLE_ROTATE_DELAY_MS) {
+    if (autoCameraSpinActive) {
+      autoCameraSpinActive = false;
+      controls.autoRotate = false;
+    }
+    return;
+  }
+
+  autoCameraSpinActive = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = CAMERA_IDLE_ROTATE_SPEED;
+
+  const currentPolar = controls.getPolarAngle();
+  const delta = preferredIdlePolar - currentPolar;
+  if (Math.abs(delta) > 0.0001) {
+    controls.rotateUp(delta * CAMERA_IDLE_ISO_LERP);
+  }
+}
+
+controls.addEventListener("start", () => {
+  markCameraInteraction();
+});
+
+renderer.domElement.addEventListener("pointerdown", () => {
+  markCameraInteraction();
+}, { passive: true });
+
+renderer.domElement.addEventListener("wheel", () => {
+  markCameraInteraction();
+}, { passive: true });
+
+renderer.domElement.addEventListener("touchstart", () => {
+  markCameraInteraction();
+}, { passive: true });
 
 const ambient = new THREE.AmbientLight(0xc8c8c8, 0.55);
 scene.add(ambient);
@@ -2408,7 +2474,7 @@ function setActiveTurnTint(player) {
     root.style.setProperty("--turn-tint", "rgba(0, 0, 0, 0)");
     return;
   }
-  root.style.setProperty("--turn-tint", hexToRgbaCss(PLAYER_COLOR[player], 0.13));
+  root.style.setProperty("--turn-tint", hexToRgbaCss(PLAYER_COLOR[player], 0.028));
 }
 
 function getHighlightColor(baseHex, lift = 0.6) {
@@ -3388,6 +3454,7 @@ function maybeFollowMove(move) {
 
 function recenterCameraTarget() {
   controls.target.set(0, 0, 0);
+  markCameraInteraction();
 }
 
 function recordAIMoveBehavior(result) {
@@ -3621,6 +3688,7 @@ function animate(time) {
   tickKingTakenFlash();
   updateFollowActivePiece();
   updateExperimentalPieceLight();
+  updateIdleAutoRotate(time);
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
