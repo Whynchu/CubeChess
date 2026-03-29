@@ -15,8 +15,8 @@ export const DEFAULT_AI_WEIGHTS = Object.freeze({
   samePieceStreak: 0.12,
   sameTypeRepeat: 0.09,
   counterRisk: 0.1,
-  tablePressure: 0.12,
-  antiHelper: 0.14,
+  tablePressure: 0.18,
+  antiHelper: 0.2,
 });
 
 export const PIECE_VALUE = Object.freeze({
@@ -42,8 +42,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     samePieceStreak: 1.18,
     sameTypeRepeat: 1.15,
     counterRisk: 0.9,
-    tablePressure: 0.95,
-    antiHelper: 1.02,
+    tablePressure: 0.9,
+    antiHelper: 1.0,
   }),
   [BoardPhase.Midgame]: Object.freeze({
     capture: 1,
@@ -59,8 +59,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     samePieceStreak: 1,
     sameTypeRepeat: 1,
     counterRisk: 1,
-    tablePressure: 1,
-    antiHelper: 1,
+    tablePressure: 1.12,
+    antiHelper: 1.18,
   }),
   [BoardPhase.Endgame]: Object.freeze({
     capture: 1.2,
@@ -76,8 +76,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     samePieceStreak: 0.9,
     sameTypeRepeat: 0.84,
     counterRisk: 1.22,
-    tablePressure: 1.2,
-    antiHelper: 1.15,
+    tablePressure: 1.38,
+    antiHelper: 1.34,
   }),
 });
 
@@ -279,3 +279,4 @@ export function evaluateHeuristicMove({
 
   return { score, breakdown, boardPhase: resolvedBoardPhase };
 }
+
