@@ -14,17 +14,17 @@ import {
   evaluateHeuristicMove,
 } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.110";
+const VERSION = "0.1.111";
 const MODE = Object.freeze({ Deterministic: "deterministic", Chaotic: "chaotic" });
 
 const PERSONA = Object.freeze({
   Red: { id: "red_aggressor", dangerWeight: 0.7, poolLimit: 110, maxRisk: 9.5 },
   Orange: { id: "orange_raider", dangerWeight: 0.78, poolLimit: 102, maxRisk: 7.8 },
   Yellow: { id: "yellow_opportunist", dangerWeight: 0.9, poolLimit: 96, maxRisk: 6.4 },
-  Green: { id: "green_swarm", dangerWeight: 0.88, poolLimit: 104, maxRisk: 6.8 },
+  Green: { id: "green_swarm", dangerWeight: 0.88, poolLimit: 108, maxRisk: 7.1 },
   Cyan: { id: "cyan_tempo", dangerWeight: 0.82, poolLimit: 100, maxRisk: 7.1 },
-  Blue: { id: "blue_fortress", dangerWeight: 1.08, poolLimit: 84, maxRisk: 4.2 },
-  Purple: { id: "purple_controller", dangerWeight: 0.95, poolLimit: 92, maxRisk: 5.8 },
+  Blue: { id: "blue_fortress", dangerWeight: 1.08, poolLimit: 92, maxRisk: 4.8 },
+  Purple: { id: "purple_controller", dangerWeight: 0.95, poolLimit: 96, maxRisk: 6.2 },
   Pink: { id: "pink_trickster", dangerWeight: 0.84, poolLimit: 104, maxRisk: 7.6 },
 });
 
