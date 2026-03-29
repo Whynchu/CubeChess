@@ -15,20 +15,16 @@ const CORNERS = Object.freeze({
 
 export const POSITION_ONE_CORNER = CORNERS[PlayerId.Yellow];
 
-export const SPAWN_ROTATION_CYCLE = Object.freeze([
+export const POSITION_ROTATION_ORDER = Object.freeze([
   PlayerId.Yellow,
-  PlayerId.Orange,
-  PlayerId.Pink,
-  PlayerId.Cyan,
-  PlayerId.Green,
-  PlayerId.Blue,
-  PlayerId.Purple,
   PlayerId.Red,
+  PlayerId.Purple,
+  PlayerId.Blue,
+  PlayerId.Green,
+  PlayerId.Cyan,
+  PlayerId.Pink,
+  PlayerId.Orange,
 ]);
-
-const DEFAULT_SLOT_INDEX_BY_PLAYER = Object.freeze(
-  Object.fromEntries(SPAWN_ROTATION_CYCLE.map((player, index) => [player, index]))
-);
 
 function inwardStep(value) {
   return value === 0 ? 1 : -1;
@@ -46,7 +42,7 @@ function cloneCoord(coord) {
 }
 
 export function normalizeSeatOffset(seatOffset = 0) {
-  const cycleLength = SPAWN_ROTATION_CYCLE.length;
+  const cycleLength = POSITION_ROTATION_ORDER.length;
   const normalized = Number.isFinite(seatOffset) ? Math.trunc(seatOffset) : 0;
   return ((normalized % cycleLength) + cycleLength) % cycleLength;
 }
@@ -55,13 +51,22 @@ export function getStartingCornerAssignments(seatOffset = 0) {
   const normalizedOffset = normalizeSeatOffset(seatOffset);
   const assignments = {};
 
-  for (const owner of TURN_ORDER) {
-    const defaultSlotIndex = DEFAULT_SLOT_INDEX_BY_PLAYER[owner];
-    const rotatedSlot = SPAWN_ROTATION_CYCLE[(defaultSlotIndex + normalizedOffset) % SPAWN_ROTATION_CYCLE.length];
-    assignments[owner] = {
-      slotOwner: rotatedSlot,
-      coord: cloneCoord(CORNERS[rotatedSlot]),
+  for (let positionIndex = 0; positionIndex < POSITION_ROTATION_ORDER.length; positionIndex += 1) {
+    const slotOwner = POSITION_ROTATION_ORDER[positionIndex];
+    const occupant = POSITION_ROTATION_ORDER[(positionIndex + normalizedOffset) % POSITION_ROTATION_ORDER.length];
+    assignments[occupant] = {
+      slotOwner,
+      coord: cloneCoord(CORNERS[slotOwner]),
     };
+  }
+
+  for (const owner of TURN_ORDER) {
+    if (!assignments[owner]) {
+      assignments[owner] = {
+        slotOwner: owner,
+        coord: cloneCoord(CORNERS[owner]),
+      };
+    }
   }
 
   return assignments;
