@@ -1,7 +1,7 @@
-
 import fs from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { pathToFileURL } from "node:url";
 
 import { initializeMatchState } from "../../Runtime/Core/GameState/initializeMatchState.js";
 import { TURN_ORDER } from "../../Runtime/Core/GameState/constants.js";
@@ -14,7 +14,7 @@ import {
   evaluateHeuristicMove,
 } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.102";
+const VERSION = "0.1.110";
 const MODE = Object.freeze({ Deterministic: "deterministic", Chaotic: "chaotic" });
 
 const PERSONA = Object.freeze({
@@ -35,9 +35,11 @@ const DEFAULTS = Object.freeze({
   mode: MODE.Chaotic,
   seed: 42,
   aiBudgetMs: 10000,
+  startGame: 1,
+  shardId: 0,
 });
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const o = { ...DEFAULTS };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
@@ -49,6 +51,8 @@ function parseArgs(argv) {
     else if (k === "--mode") { o.mode = v === MODE.Deterministic ? MODE.Deterministic : MODE.Chaotic; i += 1; }
     else if (k === "--seed") { o.seed = Number.parseInt(v, 10) || o.seed; i += 1; }
     else if (k === "--ai-budget-ms") { o.aiBudgetMs = Math.max(1, Number.parseInt(v, 10) || o.aiBudgetMs); i += 1; }
+    else if (k === "--start-game") { o.startGame = Math.max(1, Number.parseInt(v, 10) || o.startGame); i += 1; }
+    else if (k === "--shard-id") { o.shardId = Math.max(0, Number.parseInt(v, 10) || 0); i += 1; }
   }
   return o;
 }
@@ -58,7 +62,6 @@ function rngFactory(seed) {
   return () => ((s = (Math.imul(1664525, s) + 1013904223) >>> 0) / 0x100000000);
 }
 
-function moveKey(m) { return `${m?.pieceId ?? "x"}:${m?.to?.x ?? "?"},${m?.to?.y ?? "?"},${m?.to?.z ?? "?"}`; }
 function inferType(pieceId) { const p = String(pieceId ?? "").split("-"); return p.length >= 2 ? p[1] : "Piece"; }
 
 function sortScored(scored) {
@@ -287,6 +290,7 @@ async function runGame(gameIndex, options) {
   return {
     version: VERSION,
     mode: options.mode,
+    shardId: options.shardId,
     gameIndex,
     seatOffset,
     startingCorners,
@@ -301,28 +305,37 @@ async function runGame(gameIndex, options) {
   };
 }
 
-async function main() {
-  const options = parseArgs(process.argv);
-  await fs.mkdir(options.outdir, { recursive: true });
-  console.log(`Generating ${options.games} games -> ${options.outdir}`);
+export async function runBatch(options) {
+  const config = { ...DEFAULTS, ...options };
+  await fs.mkdir(config.outdir, { recursive: true });
+  const endGame = config.startGame + config.games - 1;
+  console.log(`Generating ${config.games} games -> ${config.outdir} (games ${config.startGame}-${endGame}, shard ${config.shardId})`);
   const t0 = performance.now();
   let totalTurns = 0;
-  for (let i = 1; i <= options.games; i += 1) {
-    const game = await runGame(i, options);
+  for (let offset = 0; offset < config.games; offset += 1) {
+    const gameIndex = config.startGame + offset;
+    const game = await runGame(gameIndex, config);
     totalTurns += game.traceCount;
-    const file = `cubechess-ai-batch-v${VERSION}-game${String(i).padStart(4, "0")}-turn${game.traceCount}.json`;
-    await fs.writeFile(path.join(options.outdir, file), `${JSON.stringify(game, null, 2)}\n`, "utf8");
-    if (i % 10 === 0 || i === options.games) {
-      console.log(`  ${i}/${options.games} saved (winner: ${game.winner ?? "None"}, turns: ${game.traceCount})`);
+    const file = `cubechess-ai-batch-v${VERSION}-game${String(gameIndex).padStart(4, "0")}-turn${game.traceCount}.json`;
+    await fs.writeFile(path.join(config.outdir, file), `${JSON.stringify(game, null, 2)}\n`, "utf8");
+    const completed = offset + 1;
+    if (completed % 10 === 0 || completed === config.games) {
+      console.log(`  shard ${config.shardId} ${completed}/${config.games} saved (game ${gameIndex}, winner: ${game.winner ?? "None"}, turns: ${game.traceCount})`);
     }
   }
   const ms = performance.now() - t0;
-  console.log(`Done. ${options.games} games, ${totalTurns} turns, ${(ms / 1000).toFixed(2)}s total.`);
+  console.log(`Done. ${config.games} games, ${totalTurns} turns, ${(ms / 1000).toFixed(2)}s total.`);
 }
 
-main().catch((error) => {
-  console.error("Batch generation failed:", error);
-  process.exitCode = 1;
-});
+async function main() {
+  const options = parseArgs(process.argv);
+  await runBatch(options);
+}
 
-
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error("Batch generation failed:", error);
+    process.exitCode = 1;
+  });
+}
