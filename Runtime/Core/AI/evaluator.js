@@ -83,10 +83,10 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
 
 const MOBILITY_PIECE_SCALE = Object.freeze({
   [PIECE_TYPES.King]: 0.72,
-  [PIECE_TYPES.Queen]: 0.74,
+  [PIECE_TYPES.Queen]: 0.72,
   [PIECE_TYPES.Rook]: 1.02,
   [PIECE_TYPES.Bishop]: 1.12,
-  [PIECE_TYPES.Knight]: 1.08,
+  [PIECE_TYPES.Knight]: 1.14,
 });
 
 const DEVELOPMENT_PIECE_SCALE = Object.freeze({
@@ -116,12 +116,13 @@ const SUPPORT_REWARD_SCALE = Object.freeze({
 const OPENING_QUEEN_UNDEVELOPED_TAX = 0.28;
 const OPENING_QUEEN_REUSE_TAX = 0.2;
 const OPENING_QUEEN_UNSUPPORTED_EXTRA = 0.22;
-const OPENING_KNIGHT_INITIATIVE_REWARD = 0.24;
+const OPENING_KNIGHT_INITIATIVE_REWARD = 0.34;
 const OPENING_ROOK_RELEASE_REWARD = 0.12;
 const DIVERSITY_RECENT_WINDOW = 16;
 const DIVERSITY_OVERUSED_TYPE_RATIO = 0.45;
 const DIVERSITY_OVERUSED_TYPE_TAX = 0.2;
-const DIVERSITY_UNDERUSED_TYPE_REWARD = 0.22;
+const DIVERSITY_UNDERUSED_TYPE_REWARD = 0.24;
+const DIVERSITY_UNDERUSED_KNIGHT_BONUS = 0.18;
 
 function coordKey(coord) {
   return `${coord.x},${coord.y},${coord.z}`;
@@ -378,6 +379,9 @@ export function evaluateHeuristicMove({
       const underusedThreshold = Math.max(1, Math.floor(expectedPerType * 0.6));
       if (recentSameType <= underusedThreshold) {
         breakdown.diversity += phaseWeights.sameTypeRepeat * DIVERSITY_UNDERUSED_TYPE_REWARD;
+        if (movingType === PIECE_TYPES.Knight) {
+          breakdown.diversity += phaseWeights.sameTypeRepeat * DIVERSITY_UNDERUSED_KNIGHT_BONUS;
+        }
       }
     }
   }
