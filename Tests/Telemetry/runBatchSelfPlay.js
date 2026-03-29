@@ -227,7 +227,8 @@ function summarize(traces) {
 }
 
 async function runGame(gameIndex, options) {
-  const { matchState, occupancyMap } = initializeMatchState();
+  const seatOffset = (gameIndex - 1) % TURN_ORDER.length;
+  const { matchState, occupancyMap, startingCorners } = initializeMatchState({ seatOffset });
   const machine = new TurnStateMachine({ matchState, occupancyMap, seatConfig: presetAllAI(), aiBudgetMs: options.aiBudgetMs });
   const behaviorContext = { pieceMoveCountsById: new Map(), recentMoves: [] };
   const rng = rngFactory(options.seed + (gameIndex * 104729));
@@ -287,6 +288,8 @@ async function runGame(gameIndex, options) {
     version: VERSION,
     mode: options.mode,
     gameIndex,
+    seatOffset,
+    startingCorners,
     seed: options.seed + (gameIndex * 104729),
     exportedAt: new Date().toISOString(),
     maxTurns: options.maxTurns,
@@ -321,3 +324,5 @@ main().catch((error) => {
   console.error("Batch generation failed:", error);
   process.exitCode = 1;
 });
+
+

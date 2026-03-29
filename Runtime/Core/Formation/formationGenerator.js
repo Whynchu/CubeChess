@@ -1,6 +1,6 @@
 import { Coord3 } from "../GameState/coord3.js";
 import { Piece, pieceId } from "../GameState/piece.js";
-import { PIECE_TYPES, PlayerId } from "../GameState/constants.js";
+import { PIECE_TYPES, PlayerId, TURN_ORDER } from "../GameState/constants.js";
 
 const CORNERS = Object.freeze({
   [PlayerId.Yellow]: new Coord3(0, 7, 0),
@@ -13,6 +13,23 @@ const CORNERS = Object.freeze({
   [PlayerId.Pink]: new Coord3(0, 7, 7),
 });
 
+export const POSITION_ONE_CORNER = CORNERS[PlayerId.Yellow];
+
+export const SPAWN_ROTATION_CYCLE = Object.freeze([
+  PlayerId.Yellow,
+  PlayerId.Orange,
+  PlayerId.Pink,
+  PlayerId.Cyan,
+  PlayerId.Green,
+  PlayerId.Blue,
+  PlayerId.Purple,
+  PlayerId.Red,
+]);
+
+const DEFAULT_SLOT_INDEX_BY_PLAYER = Object.freeze(
+  Object.fromEntries(SPAWN_ROTATION_CYCLE.map((player, index) => [player, index]))
+);
+
 function inwardStep(value) {
   return value === 0 ? 1 : -1;
 }
@@ -24,14 +41,40 @@ function offset(corner, x, y, z) {
   return corner.withDelta(x * sx, y * sy, z * sz);
 }
 
-export function generateStartingPieces() {
-  const allPieces = [];
+function cloneCoord(coord) {
+  return new Coord3(coord.x, coord.y, coord.z);
+}
 
-  for (const owner of [PlayerId.Yellow, PlayerId.Red, PlayerId.Purple, PlayerId.Blue,
-    PlayerId.Green, PlayerId.Orange, PlayerId.Pink, PlayerId.Cyan]) {
-    const corner = CORNERS[owner];
+export function normalizeSeatOffset(seatOffset = 0) {
+  const cycleLength = SPAWN_ROTATION_CYCLE.length;
+  const normalized = Number.isFinite(seatOffset) ? Math.trunc(seatOffset) : 0;
+  return ((normalized % cycleLength) + cycleLength) % cycleLength;
+}
+
+export function getStartingCornerAssignments(seatOffset = 0) {
+  const normalizedOffset = normalizeSeatOffset(seatOffset);
+  const assignments = {};
+
+  for (const owner of TURN_ORDER) {
+    const defaultSlotIndex = DEFAULT_SLOT_INDEX_BY_PLAYER[owner];
+    const rotatedSlot = SPAWN_ROTATION_CYCLE[(defaultSlotIndex + normalizedOffset) % SPAWN_ROTATION_CYCLE.length];
+    assignments[owner] = {
+      slotOwner: rotatedSlot,
+      coord: cloneCoord(CORNERS[rotatedSlot]),
+    };
+  }
+
+  return assignments;
+}
+
+export function generateStartingPieces({ seatOffset = 0 } = {}) {
+  const allPieces = [];
+  const assignments = getStartingCornerAssignments(seatOffset);
+
+  for (const owner of TURN_ORDER) {
+    const corner = assignments[owner]?.coord ?? cloneCoord(CORNERS[owner]);
     const pieces = [
-      new Piece({ id: pieceId(owner, PIECE_TYPES.King, 0), owner, type: PIECE_TYPES.King, coord: corner }),
+      new Piece({ id: pieceId(owner, PIECE_TYPES.King, 0), owner, type: PIECE_TYPES.King, coord: cloneCoord(corner) }),
 
       new Piece({ id: pieceId(owner, PIECE_TYPES.Queen, 0), owner, type: PIECE_TYPES.Queen, coord: offset(corner, 1, 0, 0) }),
       new Piece({ id: pieceId(owner, PIECE_TYPES.Bishop, 0), owner, type: PIECE_TYPES.Bishop, coord: offset(corner, 0, 1, 0) }),
@@ -48,4 +91,3 @@ export function generateStartingPieces() {
 
   return allPieces;
 }
-
