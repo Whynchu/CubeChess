@@ -8,7 +8,7 @@ import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../Runtime/Core/Seats/index.js";
 import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.87";
+const VERSION = "0.1.88";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 const AI_BUDGET_MAX_MS = 10000;
@@ -597,6 +597,19 @@ function cloneCoord(coord) {
     x: coord.x,
     y: coord.y,
     z: coord.z,
+  };
+}
+
+function buildPvRootStep(move, player) {
+  if (!move) {
+    return null;
+  }
+  return {
+    player: player ?? null,
+    pieceId: move.pieceId,
+    from: cloneCoord(move.from),
+    to: cloneCoord(move.to),
+    capturedPieceId: move.capturedPieceId ?? null,
   };
 }
 
@@ -1687,7 +1700,8 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
   let searchCacheHits = 0;
   let searchTimedOut = false;
   let searchedCandidateCount = 0;
-  let searchPrincipalVariation = [];
+  let searchPrincipalVariationBest = [];
+  let searchPrincipalVariationByMove = {};
 
   try {
     const workerResult = await requestAIDecisionFromWorker({
@@ -1746,7 +1760,14 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
       searchCacheHits = Number(workerResult.searchCacheHits ?? 0);
       searchTimedOut = workerResult.searchTimedOut === true;
       searchedCandidateCount = Number(workerResult.searchedCandidateCount ?? 0);
-      searchPrincipalVariation = Array.isArray(workerResult.searchPrincipalVariation) ? workerResult.searchPrincipalVariation : [];
+      searchPrincipalVariationBest = Array.isArray(workerResult.searchPrincipalVariationBest)
+        ? workerResult.searchPrincipalVariationBest
+        : Array.isArray(workerResult.searchPrincipalVariation)
+          ? workerResult.searchPrincipalVariation
+          : [];
+      searchPrincipalVariationByMove = workerResult.searchPrincipalVariationByMove && typeof workerResult.searchPrincipalVariationByMove === "object"
+        ? workerResult.searchPrincipalVariationByMove
+        : {};
     }
   } catch (error) {
     console.warn("CubeChess AI worker failed; using main-thread fallback.", error);
@@ -1789,7 +1810,8 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
       searchCacheHits,
       searchTimedOut,
       searchedCandidateCount,
-      searchPrincipalVariation,
+      searchPrincipalVariationBest,
+      searchPrincipalVariationChosen: [buildPvRootStep(fallbackMove, player)].filter(Boolean),
       elapsedMs: Number((performance.now() - decisionStartedMs).toFixed(2)),
       aborted: signal?.aborted === true,
       chosenMove: fallbackMove
@@ -1899,6 +1921,15 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
   await confirmDecision(decisionCandidates, chosenMoveIndex, signal);
 
   const chosenMoveKey = moveKey(chosenMove);
+  const chosenPvFromMap = Array.isArray(searchPrincipalVariationByMove?.[chosenMoveKey])
+    ? searchPrincipalVariationByMove[chosenMoveKey]
+    : [];
+  const searchPrincipalVariationChosen = chosenPvFromMap.length > 0
+    ? chosenPvFromMap
+    : [buildPvRootStep(chosenMove, player)].filter(Boolean);
+  const searchPrincipalVariationBestSafe = Array.isArray(searchPrincipalVariationBest) && searchPrincipalVariationBest.length > 0
+    ? searchPrincipalVariationBest
+    : [buildPvRootStep(dangerRescored[0]?.move ?? chosenMove, player)].filter(Boolean);
   const chosenScoredEntry = dangerRescored.find((entry) => moveKey(entry.move) === chosenMoveKey)
     ?? scored.find((entry) => moveKey(entry.move) === chosenMoveKey)
     ?? null;
@@ -1931,7 +1962,8 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
     searchCacheHits,
     searchTimedOut,
     searchedCandidateCount,
-    searchPrincipalVariation,
+    searchPrincipalVariationBest: searchPrincipalVariationBestSafe,
+    searchPrincipalVariationChosen,
     aborted: signal?.aborted === true,
     selectedPieceType: chosenPiece?.type ?? inferPieceTypeFromId(chosenMove.pieceId),
     selectedBy,
@@ -3232,6 +3264,13 @@ recenterCameraTarget();
 primePieceModels();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
+
+
+
+
+
+
 
 
 

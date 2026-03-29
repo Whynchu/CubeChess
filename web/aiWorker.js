@@ -636,8 +636,18 @@ function applyIterativeDeepeningSearchV2({
   });
 
   const sortedUpdated = sortScoredMoves(updated);
-  const bestKey = moveKey(sortedUpdated[0]?.move);
-  const principalVariation = searchLinesByMoveKey.get(bestKey) ?? [];
+  const bestMove = sortedUpdated[0]?.move ?? null;
+  const bestKey = moveKey(bestMove);
+  const principalVariation = searchLinesByMoveKey.get(bestKey)
+    ?? (bestMove ? [formatPvStep(bestMove, player)].filter(Boolean) : []);
+
+  const principalVariationByMove = {};
+  for (const [key, line] of searchLinesByMoveKey.entries()) {
+    principalVariationByMove[key] = Array.isArray(line) ? line.filter(Boolean) : [];
+  }
+  if (bestMove && !principalVariationByMove[bestKey]) {
+    principalVariationByMove[bestKey] = principalVariation;
+  }
 
   return {
     scoredMoves: sortedUpdated,
@@ -647,6 +657,8 @@ function applyIterativeDeepeningSearchV2({
     timedOut,
     searchedCandidateCount: searchScores.size,
     principalVariation,
+    principalVariationByMove,
+    bestMoveKey: bestKey,
   };
 }
 
@@ -778,9 +790,13 @@ function computeDecision(payload) {
     searchCacheHits: searchResult.cacheHits ?? 0,
     searchTimedOut: searchResult.timedOut === true,
     searchedCandidateCount: searchResult.searchedCandidateCount ?? 0,
-    searchPrincipalVariation: Array.isArray(searchResult.principalVariation)
+    searchPrincipalVariationBest: Array.isArray(searchResult.principalVariation)
       ? searchResult.principalVariation
       : [],
+    searchPrincipalVariationByMove: searchResult.principalVariationByMove && typeof searchResult.principalVariationByMove === "object"
+      ? searchResult.principalVariationByMove
+      : {},
+    searchPrincipalVariationBestMoveKey: typeof searchResult.bestMoveKey === "string" ? searchResult.bestMoveKey : null,
   };
 
   DECISION_CACHE.set(cacheKey, result);
@@ -802,6 +818,12 @@ self.addEventListener("message", (event) => {
     self.postMessage({ id, error: error?.message ?? "AI worker failed" });
   }
 });
+
+
+
+
+
+
 
 
 
