@@ -8,7 +8,7 @@ import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
 import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.100";
+const VERSION = "0.1.101";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 const AI_BUDGET_MAX_MS = 10000;
@@ -85,7 +85,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x1a1a1a, 18, 42);
+scene.fog = new THREE.Fog(0x0d0d0d, 18, 42);
 
 const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(11, 12, 14);
@@ -2391,6 +2391,26 @@ function hexToCssColor(hex) {
   return `#${hex.toString(16).padStart(6, "0")}`;
 }
 
+function hexToRgbaCss(hex, alpha = 1) {
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8) & 0xff;
+  const b = hex & 0xff;
+  const clampedAlpha = Math.max(0, Math.min(1, alpha));
+  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
+}
+
+function setActiveTurnTint(player) {
+  const root = document.documentElement;
+  if (!root) {
+    return;
+  }
+  if (!player || !PLAYER_COLOR[player]) {
+    root.style.setProperty("--turn-tint", "rgba(0, 0, 0, 0)");
+    return;
+  }
+  root.style.setProperty("--turn-tint", hexToRgbaCss(PLAYER_COLOR[player], 0.13));
+}
+
 function getHighlightColor(baseHex, lift = 0.6) {
   const color = new THREE.Color(baseHex ?? 0xffffff);
   color.lerp(new THREE.Color(0xffffff), Math.max(0, Math.min(1, lift)));
@@ -2434,6 +2454,13 @@ function tickKingTakenFlash(nowMs = performance.now()) {
   if (nowMs >= kingTakenFlashEndAtMs) {
     hideKingTakenFlash();
   }
+}
+
+function getKingTakenFlashRemainingMs(nowMs = performance.now()) {
+  if (!eventFlashEl || eventFlashEl.hidden || kingTakenFlashEndAtMs <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.ceil(kingTakenFlashEndAtMs - nowMs));
 }
 
 function clearWinnerReplayTimer() {
@@ -3341,11 +3368,13 @@ function formatMoveHudText(move) {
 }
 function updateTurnHud() {
   if (turnMachine.phase === TurnPhase.MatchEnded) {
+    setActiveTurnTint(null);
     setCurrentTurnLabel(`Winner: ${turnMachine.winner ? getPlayerDisplayName(turnMachine.winner) : "None"}`);
     setTurnLabel(lastMoveHudText ? `Last: ${lastMoveHudText}` : "Last: -");
     return;
   }
 
+  setActiveTurnTint(matchState.activePlayer);
   setCurrentTurnLabel(`Turn ${matchState.turnCount + 1} • ${getPlayerDisplayName(matchState.activePlayer)}`);
   setTurnLabel(lastMoveHudText ? `Last: ${lastMoveHudText}` : "Last: -");
 }
@@ -3474,7 +3503,9 @@ async function runOneTurn() {
     turnInFlight = false;
     if (!paused && turnMachine.phase !== TurnPhase.MatchEnded) {
       const cooldownMs = getActiveAnimationCooldownMs();
-      scheduleTurn(Math.max(getTurnDelayMs(), cooldownMs));
+      const flashRemainingMs = getKingTakenFlashRemainingMs();
+      const baseDelayMs = flashRemainingMs > 0 ? 0 : getTurnDelayMs();
+      scheduleTurn(Math.max(baseDelayMs, cooldownMs, flashRemainingMs));
     }
   }
 }

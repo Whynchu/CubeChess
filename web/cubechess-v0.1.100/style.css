@@ -1,7 +1,8 @@
 :root {
   color-scheme: dark;
-  --bg-top: #0f0f0f;
-  --bg-bottom: #171717;
+  --bg-top: #090909;
+  --bg-bottom: #121212;
+  --turn-tint: rgba(0, 0, 0, 0);
   --panel: rgba(24, 24, 24, 0.82);
   --text: #f0f0f0;
   --muted: #bbbbbb;
@@ -20,7 +21,9 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: radial-gradient(1200px 800px at 15% 15%, #242424 0%, var(--bg-top) 38%, var(--bg-bottom) 100%);
+  background:
+    linear-gradient(var(--turn-tint), var(--turn-tint)),
+    radial-gradient(1200px 800px at 15% 15%, #171717 0%, var(--bg-top) 38%, var(--bg-bottom) 100%);
   color: var(--text);
   font-family: "Segoe UI", "Trebuchet MS", sans-serif;
   font-size: 16px;
@@ -45,10 +48,10 @@ body {
   gap: 2px;
   padding: 8px 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(9, 18, 28, 0.82);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  border-radius: 16px;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   text-align: center;
   pointer-events: none;
 }
