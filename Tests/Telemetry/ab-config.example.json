@@ -1,0 +1,25 @@
+{
+  "traceMode": "light",
+  "defaultSearch": {
+    "rootCandidateLimit": 14,
+    "depth3CandidateLimit": 7,
+    "depth4CandidateLimit": 3,
+    "opponentMoveLimit": 12,
+    "selfMoveLimit": 12
+  },
+  "persona": {
+    "Red": {
+      "poolLimit": 104,
+      "search": {
+        "rootCandidateLimit": 16,
+        "depth3CandidateLimit": 7
+      }
+    },
+    "Purple": {
+      "search": {
+        "budgetFraction": 0.45,
+        "depth4CandidateLimit": 5
+      }
+    }
+  }
+}

@@ -12,6 +12,8 @@ const DEFAULTS = Object.freeze({
   seed: 42,
   aiBudgetMs: 10000,
   clean: false,
+  traceMode: "full",
+  configPath: null,
 });
 
 function parseArgs(argv) {
@@ -31,6 +33,8 @@ function parseArgs(argv) {
     else if (key === "--mode") { options.mode = value === "deterministic" ? "deterministic" : "chaotic"; i += 1; }
     else if (key === "--seed") { options.seed = Number.parseInt(value, 10) || options.seed; i += 1; }
     else if (key === "--ai-budget-ms") { options.aiBudgetMs = Math.max(1, Number.parseInt(value, 10) || options.aiBudgetMs); i += 1; }
+    else if (key === "--trace-mode") { options.traceMode = value === "light" ? "light" : "full"; i += 1; }
+    else if (key === "--config") { options.configPath = value; i += 1; }
   }
   options.workers = Math.min(options.workers, options.games);
   return options;
@@ -71,6 +75,8 @@ function runShard(shard, options) {
         maxTurns: options.maxTurns,
         seed: options.seed,
         aiBudgetMs: options.aiBudgetMs,
+        traceMode: options.traceMode,
+        configPath: options.configPath,
       },
     });
 
@@ -99,7 +105,7 @@ async function main() {
   }
 
   const shards = buildShards(options.games, options.workers);
-  console.log(`Launching ${options.games} games across ${shards.length} workers -> ${options.outdir}`);
+  console.log(`Launching ${options.games} games across ${shards.length} workers -> ${options.outdir} (trace=${options.traceMode})`);
   await Promise.all(shards.map((shard) => runShard(shard, options)));
   console.log("Parallel batch complete.");
 }

@@ -17,7 +17,7 @@ import {
   TranspositionCache,
 } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.114";
+const VERSION = "0.1.115";
 const MODE = Object.freeze({ Deterministic: "deterministic", Chaotic: "chaotic" });
 const SEARCH_NODE_CACHE = new TranspositionCache(4096);
 
@@ -58,6 +58,8 @@ const DEFAULTS = Object.freeze({
   aiBudgetMs: 10000,
   startGame: 1,
   shardId: 0,
+  traceMode: "full",
+  configPath: null,
 });
 
 export function parseArgs(argv) {
@@ -74,6 +76,8 @@ export function parseArgs(argv) {
     else if (k === "--ai-budget-ms") { o.aiBudgetMs = Math.max(1, Number.parseInt(v, 10) || o.aiBudgetMs); i += 1; }
     else if (k === "--start-game") { o.startGame = Math.max(1, Number.parseInt(v, 10) || o.startGame); i += 1; }
     else if (k === "--shard-id") { o.shardId = Math.max(0, Number.parseInt(v, 10) || 0); i += 1; }
+    else if (k === "--trace-mode") { o.traceMode = v === "light" ? "light" : "full"; i += 1; }
+    else if (k === "--config") { o.configPath = v; i += 1; }
   }
   return o;
 }
@@ -127,8 +131,43 @@ function chaoticPenalty(entry, recentMoves, player) {
   return Number(((samePiece * 0.55) + (Math.max(0, sameType - 1) * 0.34) + (sameDest * 0.26) + (backtrack ? 0.22 : 0)).toFixed(4));
 }
 
-function chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorContext, mode, rng, aiBudgetMs }) {
-  const p = PERSONA[player] ?? { id: "default", dangerWeight: 0.8, poolLimit: 96, maxRisk: Number.POSITIVE_INFINITY, search: DEFAULT_SEARCH };
+function mergeSearch(base, override) {
+  return { ...base, ...(override ?? {}) };
+}
+
+function mergePersonaRegistry(baseRegistry, overrides) {
+  const merged = {};
+  for (const [player, baseProfile] of Object.entries(baseRegistry)) {
+    const override = overrides?.[player] ?? null;
+    merged[player] = override
+      ? { ...baseProfile, ...override, search: mergeSearch(baseProfile.search ?? DEFAULT_SEARCH, override.search) }
+      : { ...baseProfile, search: mergeSearch(DEFAULT_SEARCH, baseProfile.search) };
+  }
+  return merged;
+}
+
+async function loadExternalConfig(configPath) {
+  if (!configPath) {
+    return {};
+  }
+  const raw = await fs.readFile(configPath, "utf8");
+  const parsed = JSON.parse(raw);
+  return typeof parsed === "object" && parsed !== null ? parsed : {};
+}
+
+function chooseMove({
+  matchState,
+  occupancyMap,
+  player,
+  legalMoves,
+  behaviorContext,
+  mode,
+  rng,
+  aiBudgetMs,
+  personaRegistry,
+  defaultSearch,
+}) {
+  const p = personaRegistry[player] ?? { id: "default", dangerWeight: 0.8, poolLimit: 96, maxRisk: Number.POSITIVE_INFINITY, search: defaultSearch };
   const boardPhase = classifyBoardPhase(matchState);
   const threatContext = createTurnThreatContext({ matchState, occupancyMap, player });
 
@@ -149,14 +188,15 @@ function chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorCont
 
   const dangerScored = sortScored(danger.scoredMoves ?? scored);
   const candidatePool = pruneScoredCandidates(dangerScored, { limit: p.poolLimit, minPerPiece: 2 });
-  const searchConfig = { ...DEFAULT_SEARCH, ...(p.search ?? {}) };
+  const searchConfig = { ...defaultSearch, ...(p.search ?? {}) };
   const searchBudgetMs = Math.max(
-    searchConfig.budgetMinMs ?? DEFAULT_SEARCH.budgetMinMs,
+    searchConfig.budgetMinMs ?? defaultSearch.budgetMinMs,
     Math.min(
-      searchConfig.budgetMaxMs ?? DEFAULT_SEARCH.budgetMaxMs,
-      Math.floor(aiBudgetMs * (searchConfig.budgetFraction ?? DEFAULT_SEARCH.budgetFraction))
+      searchConfig.budgetMaxMs ?? defaultSearch.budgetMaxMs,
+      Math.floor(aiBudgetMs * (searchConfig.budgetFraction ?? defaultSearch.budgetFraction))
     )
   );
+
   const searchResult = applyIterativeDeepeningSearch({
     dangerRescored: dangerScored,
     candidatePool,
@@ -274,7 +314,7 @@ async function runGame(gameIndex, options) {
     if (begin.type === "MatchEnded") { winner = begin.winner ?? null; break; }
     if (begin.type !== TurnPhase.AwaitingAIMove) {
       if (begin.type === "TurnPassed") {
-        traces.push({ turnIndex: matchState.turnCount, player: begin.player, personaId: PERSONA[begin.player]?.id ?? "default", selectedBy: "pass", chosenMove: null, personaRiskRejectedCount: 0, personaCandidatePoolCount: 0 });
+        traces.push({ turnIndex: matchState.turnCount, player: begin.player, personaId: options.personaRegistry[begin.player]?.id ?? "default", selectedBy: "pass", chosenMove: null, personaRiskRejectedCount: 0, personaCandidatePoolCount: 0 });
       }
       continue;
     }
@@ -283,7 +323,18 @@ async function runGame(gameIndex, options) {
     const turnStart = performance.now();
     const result = await machine.resolveAITurn({
       requestMove: ({ legalMoves, player }) => {
-        const c = chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorContext, mode: options.mode, rng, aiBudgetMs: options.aiBudgetMs });
+        const c = chooseMove({
+          matchState,
+          occupancyMap,
+          player,
+          legalMoves,
+          behaviorContext,
+          mode: options.mode,
+          rng,
+          aiBudgetMs: options.aiBudgetMs,
+          personaRegistry: options.personaRegistry,
+          defaultSearch: options.defaultSearch,
+        });
         turnTrace = c.trace;
         return c.move;
       },
@@ -296,7 +347,7 @@ async function runGame(gameIndex, options) {
       traces.push({
         turnIndex: matchState.turnCount,
         player: result.player,
-        personaId: turnTrace?.personaId ?? PERSONA[result.player]?.id ?? "default",
+        personaId: turnTrace?.personaId ?? options.personaRegistry[result.player]?.id ?? "default",
         selectedPieceType: inferType(result.move.pieceId),
         elapsedMs: Number((performance.now() - turnStart).toFixed(2)),
         eliminatedPlayer: result.eliminatedPlayer ?? null,
@@ -335,24 +386,64 @@ async function runGame(gameIndex, options) {
   };
 }
 
+function toLightTrace(trace) {
+  return {
+    turnIndex: trace?.turnIndex ?? 0,
+    player: trace?.player ?? null,
+    personaId: trace?.personaId ?? "default",
+    selectedBy: trace?.selectedBy ?? "unknown",
+    selectedPieceType: trace?.selectedPieceType ?? null,
+    chosenMove: trace?.chosenMove
+      ? {
+        pieceId: trace.chosenMove.pieceId,
+        from: trace.chosenMove.from,
+        to: trace.chosenMove.to,
+        isCapture: Boolean(trace.chosenMove.isCapture),
+      }
+      : null,
+    personaRiskRejectedCount: Number(trace?.personaRiskRejectedCount ?? 0),
+    personaCandidatePoolCount: Number(trace?.personaCandidatePoolCount ?? 0),
+    searchDepthReached: Number(trace?.searchDepthReached ?? 0),
+    searchNodesExpanded: Number(trace?.searchNodesExpanded ?? 0),
+    searchTimedOut: trace?.searchTimedOut === true,
+    elapsedMs: Number(trace?.elapsedMs ?? 0),
+  };
+}
+
+function toLightGame(game) {
+  return {
+    ...game,
+    traces: Array.isArray(game?.traces) ? game.traces.map(toLightTrace) : [],
+  };
+}
+
 export async function runBatch(options) {
   const config = { ...DEFAULTS, ...options };
+  const external = await loadExternalConfig(config.configPath);
+  config.defaultSearch = mergeSearch(DEFAULT_SEARCH, external.defaultSearch);
+  config.personaRegistry = mergePersonaRegistry(PERSONA, external.persona);
+  config.traceMode = external.traceMode === "light" || config.traceMode === "light" ? "light" : "full";
+
   await fs.mkdir(config.outdir, { recursive: true });
   const endGame = config.startGame + config.games - 1;
-  console.log(`Generating ${config.games} games -> ${config.outdir} (games ${config.startGame}-${endGame}, shard ${config.shardId})`);
+  console.log(`Generating ${config.games} games -> ${config.outdir} (games ${config.startGame}-${endGame}, shard ${config.shardId}, trace=${config.traceMode})`);
   const t0 = performance.now();
   let totalTurns = 0;
+
   for (let offset = 0; offset < config.games; offset += 1) {
     const gameIndex = config.startGame + offset;
     const game = await runGame(gameIndex, config);
+    const persistedGame = config.traceMode === "light" ? toLightGame(game) : game;
     totalTurns += game.traceCount;
     const file = `cubechess-ai-batch-v${VERSION}-game${String(gameIndex).padStart(4, "0")}-turn${game.traceCount}.json`;
-    await fs.writeFile(path.join(config.outdir, file), `${JSON.stringify(game, null, 2)}\n`, "utf8");
+    await fs.writeFile(path.join(config.outdir, file), `${JSON.stringify(persistedGame, null, 2)}\n`, "utf8");
+
     const completed = offset + 1;
     if (completed % 10 === 0 || completed === config.games) {
       console.log(`  shard ${config.shardId} ${completed}/${config.games} saved (game ${gameIndex}, winner: ${game.winner ?? "None"}, turns: ${game.traceCount})`);
     }
   }
+
   const ms = performance.now() - t0;
   console.log(`Done. ${config.games} games, ${totalTurns} turns, ${(ms / 1000).toFixed(2)}s total.`);
 }

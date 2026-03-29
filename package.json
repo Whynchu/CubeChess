@@ -9,6 +9,8 @@
     "bench:m3": "node Tests/Performance/m3_turn_benchmark.js",
     "telemetry:batch": "node Tests/Telemetry/runBatchSelfPlay.js --games 300 --outdir Tests/game_dump/batch --mode chaotic --max-turns 220",
     "telemetry:batch:parallel": "node Tests/Telemetry/runParallelBatchSelfPlay.js --games 300 --workers 7 --outdir Tests/game_dump/batch --mode chaotic --max-turns 220 --clean",
-    "telemetry:analyze": "node Tests/Telemetry/analyzeBatchTelemetry.js --input Tests/game_dump/batch"
+    "telemetry:batch:light": "node Tests/Telemetry/runParallelBatchSelfPlay.js --games 128 --workers 7 --outdir Tests/game_dump/batch --mode chaotic --max-turns 220 --trace-mode light --clean",
+    "telemetry:analyze": "node Tests/Telemetry/analyzeBatchTelemetry.js --input Tests/game_dump/batch",
+    "telemetry:ab": "node Tests/Telemetry/runABBatchCompare.js --games 128 --workers 7 --outdir Tests/game_dump/ab --mode chaotic --max-turns 220 --trace-mode light --clean"
   }
 }
