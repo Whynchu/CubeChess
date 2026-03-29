@@ -44,12 +44,14 @@ export function createTurnThreatContext({ matchState, occupancyMap, player }) {
 
   const opponent = {
     attackCounts: new Map(),
+    attackCountsByPlayer: new Map(),
     threatenedFriendlyPieceIds: new Set(),
     players: opponentPlayers,
   };
 
   for (const opponentPlayer of opponentPlayers) {
     const map = buildThreatMapForPlayer(matchState, occupancyMap, opponentPlayer);
+    opponent.attackCountsByPlayer.set(opponentPlayer, map.attackCounts);
 
     for (const [key, count] of map.attackCounts) {
       opponent.attackCounts.set(key, (opponent.attackCounts.get(key) ?? 0) + count);

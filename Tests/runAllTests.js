@@ -509,6 +509,80 @@ run("AI evaluator applies counter-risk penalty when destination has net opponent
   assert.ok(saferEval.breakdown.counterRisk >= riskyEval.breakdown.counterRisk, "Safer move should not be penalized more than risky move");
   assert.ok(saferEval.score > riskyEval.score, "Safer move should outscore risky move under counter-risk weighting");
 });
+run("AI threat context tracks per-opponent attack maps", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+  const redRook = buildPiece("Red-Rook-1", PlayerId.Red, PIECE_TYPES.Rook, 3, 7, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+  const blueQueen = buildPiece("Blue-Queen-1", PlayerId.Blue, PIECE_TYPES.Queen, 7, 4, 3);
+  const blueKing = buildPiece("Blue-King-1", PlayerId.Blue, PIECE_TYPES.King, 7, 0, 7);
+
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowRook, yellowKing, redRook, redKing, blueQueen, blueKing],
+    PlayerId.Yellow
+  );
+
+  const threatContext = createTurnThreatContext({ matchState, occupancyMap, player: PlayerId.Yellow });
+  const byPlayer = threatContext.opponent.attackCountsByPlayer;
+
+  assert.ok(byPlayer instanceof Map, "Expected opponent attack maps keyed by player");
+  assert.ok(byPlayer.has(PlayerId.Red), "Expected red attack map to be present");
+  assert.ok(byPlayer.has(PlayerId.Blue), "Expected blue attack map to be present");
+  assert.ok((byPlayer.get(PlayerId.Red)?.get("3,4,3") ?? 0) > 0, "Expected red pressure on destination");
+  assert.ok((byPlayer.get(PlayerId.Blue)?.get("3,4,3") ?? 0) > 0, "Expected blue pressure on destination");
+});
+
+run("AI evaluator applies table-pressure penalty when multiple opponents cover destination", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+  const redRook = buildPiece("Red-Rook-1", PlayerId.Red, PIECE_TYPES.Rook, 3, 7, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+  const blueQueen = buildPiece("Blue-Queen-1", PlayerId.Blue, PIECE_TYPES.Queen, 7, 4, 3);
+  const blueKing = buildPiece("Blue-King-1", PlayerId.Blue, PIECE_TYPES.King, 7, 0, 7);
+
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowRook, yellowKing, redRook, redKing, blueQueen, blueKing],
+    PlayerId.Yellow
+  );
+
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+  const riskyMove = legalMoves.find((move) => move.to.x === 3 && move.to.y === 4 && move.to.z === 3);
+  const saferMove = legalMoves.find((move) => move.to.x === 2 && move.to.y === 3 && move.to.z === 3);
+
+  assert.ok(riskyMove, "Expected risky destination move to exist");
+  assert.ok(saferMove, "Expected safer destination move to exist");
+
+  const threatContext = createTurnThreatContext({ matchState, occupancyMap, player: PlayerId.Yellow });
+  const riskyEval = evaluateHeuristicMove({ move: riskyMove, matchState, legalMoves, threatContext });
+  const saferEval = evaluateHeuristicMove({ move: saferMove, matchState, legalMoves, threatContext });
+
+  assert.ok(riskyEval.breakdown.tablePressure < 0, "Multi-opponent destination should incur table-pressure penalty");
+  assert.ok(saferEval.breakdown.tablePressure >= riskyEval.breakdown.tablePressure, "Safer destination should not be penalized more");
+});
+
+run("AI evaluator applies anti-helper penalty when capture feeds third-party pressure", () => {
+  const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
+  const yellowKing = buildPiece("Yellow-King-1", PlayerId.Yellow, PIECE_TYPES.King, 0, 0, 0);
+  const redRook = buildPiece("Red-Rook-1", PlayerId.Red, PIECE_TYPES.Rook, 3, 7, 3);
+  const redKing = buildPiece("Red-King-1", PlayerId.Red, PIECE_TYPES.King, 7, 7, 7);
+  const blueQueen = buildPiece("Blue-Queen-1", PlayerId.Blue, PIECE_TYPES.Queen, 7, 7, 3);
+  const blueKing = buildPiece("Blue-King-1", PlayerId.Blue, PIECE_TYPES.King, 7, 0, 7);
+
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowRook, yellowKing, redRook, redKing, blueQueen, blueKing],
+    PlayerId.Yellow
+  );
+
+  const legalMoves = getLegalMoves(matchState, occupancyMap, yellowRook.id);
+  const captureMove = legalMoves.find((move) => move.capturedPieceId === redRook.id);
+
+  assert.ok(captureMove, "Expected capture move against red rook");
+
+  const threatContext = createTurnThreatContext({ matchState, occupancyMap, player: PlayerId.Yellow });
+  const captureEval = evaluateHeuristicMove({ move: captureMove, matchState, legalMoves, threatContext });
+
+  assert.ok(captureEval.breakdown.antiHelper < 0, "Capture under third-party pressure should incur anti-helper penalty");
+});
 run("AI heuristic evaluator is deterministic and favors high-value captures", () => {
   const yellowRook = buildPiece("Yellow-Rook-1", PlayerId.Yellow, PIECE_TYPES.Rook, 3, 3, 3);
   const redQueen = buildPiece("Red-Queen-1", PlayerId.Red, PIECE_TYPES.Queen, 3, 6, 3);
@@ -638,6 +712,8 @@ await Promise.all(pendingTests);
 if (process.exitCode) {
   process.exit(process.exitCode);
 }
+
+
 
 
 

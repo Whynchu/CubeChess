@@ -15,6 +15,8 @@ export const DEFAULT_AI_WEIGHTS = Object.freeze({
   samePieceStreak: 0.12,
   sameTypeRepeat: 0.09,
   counterRisk: 0.1,
+  tablePressure: 0.12,
+  antiHelper: 0.14,
 });
 
 export const PIECE_VALUE = Object.freeze({
@@ -40,6 +42,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     samePieceStreak: 1.18,
     sameTypeRepeat: 1.15,
     counterRisk: 0.9,
+    tablePressure: 0.95,
+    antiHelper: 1.02,
   }),
   [BoardPhase.Midgame]: Object.freeze({
     capture: 1,
@@ -55,6 +59,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     samePieceStreak: 1,
     sameTypeRepeat: 1,
     counterRisk: 1,
+    tablePressure: 1,
+    antiHelper: 1,
   }),
   [BoardPhase.Endgame]: Object.freeze({
     capture: 1.2,
@@ -70,6 +76,8 @@ const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
     samePieceStreak: 0.9,
     sameTypeRepeat: 0.84,
     counterRisk: 1.22,
+    tablePressure: 1.2,
+    antiHelper: 1.15,
   }),
 });
 
@@ -102,6 +110,34 @@ function getPhaseWeights(weights, boardPhase) {
     samePieceStreak: weights.samePieceStreak * multipliers.samePieceStreak,
     sameTypeRepeat: weights.sameTypeRepeat * multipliers.sameTypeRepeat,
     counterRisk: weights.counterRisk * multipliers.counterRisk,
+    tablePressure: weights.tablePressure * multipliers.tablePressure,
+    antiHelper: weights.antiHelper * multipliers.antiHelper,
+  };
+}
+
+function getOpponentPressureAtDestination(threatContext, destinationKey) {
+  const byPlayer = threatContext?.opponent?.attackCountsByPlayer;
+  if (!(byPlayer instanceof Map) || byPlayer.size === 0) {
+    return {
+      opponentPlayerPressureCount: 0,
+      opponentAttackersByPlayer: new Map(),
+    };
+  }
+
+  const opponentAttackersByPlayer = new Map();
+  let opponentPlayerPressureCount = 0;
+
+  for (const [opponentPlayer, attackMap] of byPlayer.entries()) {
+    const count = attackMap?.get?.(destinationKey) ?? 0;
+    if (count > 0) {
+      opponentPlayerPressureCount += 1;
+      opponentAttackersByPlayer.set(opponentPlayer, count);
+    }
+  }
+
+  return {
+    opponentPlayerPressureCount,
+    opponentAttackersByPlayer,
   };
 }
 
@@ -129,6 +165,8 @@ export function evaluateHeuristicMove({
     repetition: 0,
     diversity: 0,
     counterRisk: 0,
+    tablePressure: 0,
+    antiHelper: 0,
     boardPhase: resolvedBoardPhase,
   };
 
@@ -162,6 +200,32 @@ export function evaluateHeuristicMove({
   const netPressure = Math.max(0, opponentAttackers - friendlySupport);
   if (netPressure > 0) {
     breakdown.counterRisk = -(netPressure * movingPieceValue * phaseWeights.counterRisk);
+  }
+
+  const {
+    opponentPlayerPressureCount,
+    opponentAttackersByPlayer,
+  } = getOpponentPressureAtDestination(threatContext, destinationKey);
+
+  const extraOpponents = Math.max(0, opponentPlayerPressureCount - 1);
+  if (extraOpponents > 0) {
+    const tablePressureScale = (movingPieceValue * 0.5) + 0.5;
+    breakdown.tablePressure = -(extraOpponents * tablePressureScale * phaseWeights.tablePressure);
+  }
+
+  if (move?.capturedPieceId && opponentAttackersByPlayer.size > 0) {
+    const captured = matchState?.pieces?.find((piece) => piece.id === move.capturedPieceId);
+    const capturedOwner = captured?.owner ?? null;
+    let helperPressure = 0;
+    for (const [opponentPlayer, attackCount] of opponentAttackersByPlayer.entries()) {
+      if (opponentPlayer === capturedOwner) {
+        continue;
+      }
+      helperPressure += attackCount;
+    }
+    if (helperPressure > 0) {
+      breakdown.antiHelper = -(helperPressure * movingPieceValue * phaseWeights.antiHelper);
+    }
   }
 
   const pieceMoveCount = behaviorContext?.pieceMoveCountsById?.get?.(move.pieceId) ?? 0;
@@ -209,7 +273,9 @@ export function evaluateHeuristicMove({
     + breakdown.inactivity
     + breakdown.repetition
     + breakdown.diversity
-    + breakdown.counterRisk;
+    + breakdown.counterRisk
+    + breakdown.tablePressure
+    + breakdown.antiHelper;
 
   return { score, breakdown, boardPhase: resolvedBoardPhase };
 }
