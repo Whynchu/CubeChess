@@ -6,39 +6,9 @@
   "scripts": {
     "test": "node Tests/runAllTests.js",
     "bench:m2": "node Tests/Performance/m2_movement_benchmark.js",
-    "bench:m3": "node Tests/Performance/m3_turn_benchmark.js"
+    "bench:m3": "node Tests/Performance/m3_turn_benchmark.js",
+    "telemetry:batch": "node Tests/Telemetry/runBatchSelfPlay.js --games 300 --outdir Tests/game_dump/batch --mode chaotic --max-turns 220",
+    "telemetry:analyze": "node Tests/Telemetry/analyzeBatchTelemetry.js --input Tests/game_dump/batch"
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
