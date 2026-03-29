@@ -208,24 +208,34 @@ export function evaluateHeuristicMove({
   } = getOpponentPressureAtDestination(threatContext, destinationKey);
 
   const extraOpponents = Math.max(0, opponentPlayerPressureCount - 1);
-  if (extraOpponents > 0) {
+  const baseTablePressure = opponentPlayerPressureCount > 0 && netPressure > 0 ? 0.35 : 0;
+  const tablePressureUnits = baseTablePressure + extraOpponents;
+  if (tablePressureUnits > 0) {
     const tablePressureScale = (movingPieceValue * 0.5) + 0.5;
-    breakdown.tablePressure = -(extraOpponents * tablePressureScale * phaseWeights.tablePressure);
+    breakdown.tablePressure = -(tablePressureUnits * tablePressureScale * phaseWeights.tablePressure);
   }
 
-  if (move?.capturedPieceId && opponentAttackersByPlayer.size > 0) {
-    const captured = matchState?.pieces?.find((piece) => piece.id === move.capturedPieceId);
-    const capturedOwner = captured?.owner ?? null;
-    let helperPressure = 0;
-    for (const [opponentPlayer, attackCount] of opponentAttackersByPlayer.entries()) {
-      if (opponentPlayer === capturedOwner) {
-        continue;
+  let helperPressure = 0;
+  if (opponentAttackersByPlayer.size > 0) {
+    if (move?.capturedPieceId) {
+      const captured = matchState?.pieces?.find((piece) => piece.id === move.capturedPieceId);
+      const capturedOwner = captured?.owner ?? null;
+      for (const [opponentPlayer, attackCount] of opponentAttackersByPlayer.entries()) {
+        if (opponentPlayer === capturedOwner) {
+          continue;
+        }
+        helperPressure += attackCount;
       }
-      helperPressure += attackCount;
     }
-    if (helperPressure > 0) {
-      breakdown.antiHelper = -(helperPressure * movingPieceValue * phaseWeights.antiHelper);
+
+    // Even without capture, walking into multi-opponent pressure can feed a rival attack race.
+    if (helperPressure === 0 && opponentPlayerPressureCount >= 2 && netPressure > 0) {
+      helperPressure = opponentPlayerPressureCount - 1;
     }
+  }
+
+  if (helperPressure > 0) {
+    breakdown.antiHelper = -(helperPressure * movingPieceValue * phaseWeights.antiHelper);
   }
 
   const pieceMoveCount = behaviorContext?.pieceMoveCountsById?.get?.(move.pieceId) ?? 0;
@@ -279,4 +289,5 @@ export function evaluateHeuristicMove({
 
   return { score, breakdown, boardPhase: resolvedBoardPhase };
 }
+
 
