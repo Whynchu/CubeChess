@@ -8,7 +8,7 @@ import { TurnPhase, TurnStateMachine } from "../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../Runtime/Core/Seats/index.js";
 import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.86";
+const VERSION = "0.1.87";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 const AI_BUDGET_MAX_MS = 10000;
@@ -1687,6 +1687,7 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
   let searchCacheHits = 0;
   let searchTimedOut = false;
   let searchedCandidateCount = 0;
+  let searchPrincipalVariation = [];
 
   try {
     const workerResult = await requestAIDecisionFromWorker({
@@ -1745,6 +1746,7 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
       searchCacheHits = Number(workerResult.searchCacheHits ?? 0);
       searchTimedOut = workerResult.searchTimedOut === true;
       searchedCandidateCount = Number(workerResult.searchedCandidateCount ?? 0);
+      searchPrincipalVariation = Array.isArray(workerResult.searchPrincipalVariation) ? workerResult.searchPrincipalVariation : [];
     }
   } catch (error) {
     console.warn("CubeChess AI worker failed; using main-thread fallback.", error);
@@ -1787,6 +1789,7 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
       searchCacheHits,
       searchTimedOut,
       searchedCandidateCount,
+      searchPrincipalVariation,
       elapsedMs: Number((performance.now() - decisionStartedMs).toFixed(2)),
       aborted: signal?.aborted === true,
       chosenMove: fallbackMove
@@ -1928,6 +1931,7 @@ async function chooseHeuristicAIMove({ legalMoves, signal, ...context }) {
     searchCacheHits,
     searchTimedOut,
     searchedCandidateCount,
+    searchPrincipalVariation,
     aborted: signal?.aborted === true,
     selectedPieceType: chosenPiece?.type ?? inferPieceTypeFromId(chosenMove.pieceId),
     selectedBy,
@@ -3228,6 +3232,9 @@ recenterCameraTarget();
 primePieceModels();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
+
+
 
 
 

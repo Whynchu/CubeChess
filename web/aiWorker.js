@@ -43,6 +43,19 @@ function moveKey(move) {
   return String(move?.pieceId ?? "piece") + ":" + to.x + "," + to.y + "," + to.z;
 }
 
+function formatPvStep(move, player) {
+  if (!move) {
+    return null;
+  }
+  return {
+    player: player ?? null,
+    pieceId: move.pieceId,
+    from: move.from ? { x: move.from.x, y: move.from.y, z: move.from.z } : null,
+    to: move.to ? { x: move.to.x, y: move.to.y, z: move.to.z } : null,
+    capturedPieceId: move.capturedPieceId ?? null,
+  };
+}
+
 function pruneScoredCandidates(scoredMoves, options = {}) {
   const limit = Math.max(1, options.limit ?? 96);
   const minPerPiece = Math.max(1, options.minPerPiece ?? 2);
@@ -382,7 +395,14 @@ function evaluateBestSelfReplyScore({
       }).slice(0, Math.max(1, selfMoveLimit));
 
       metrics.nodesExpanded += Math.min(scored.length, Math.max(1, selfMoveLimit));
-      return scored[0]?.score ?? null;
+      const best = scored[0] ?? null;
+      if (!best) {
+        return null;
+      }
+      return {
+        move: best.move,
+        score: best.score,
+      };
     },
   });
 }
@@ -413,10 +433,11 @@ function evaluateRootMoveWithDepth({
 
   metrics.nodesExpanded += 1;
 
+  const principalVariation = [formatPvStep(rootEntry.move, rootPlayer)];
   let score = Number(rootEntry.score ?? 0);
 
   if (depth < 2) {
-    return score;
+    return { score, principalVariation };
   }
 
   const strongestReply = evaluateStrongestOpponentReply({
@@ -432,17 +453,18 @@ function evaluateRootMoveWithDepth({
   });
 
   if (strongestReply?.move) {
+    principalVariation.push(formatPvStep(strongestReply.move, strongestReply.opponent));
     score -= strongestReply.score * replyWeight;
 
     const replied = applyMoveToClone(cloned.matchState, cloned.occupancyMap, strongestReply.move);
     if (!replied) {
-      return score;
+      return { score, principalVariation };
     }
 
     metrics.nodesExpanded += 1;
 
     if (depth >= 3) {
-      const replyScore = evaluateBestSelfReplyScore({
+      const selfReply = evaluateBestSelfReplyScore({
         matchState: cloned.matchState,
         occupancyMap: cloned.occupancyMap,
         player: rootPlayer,
@@ -454,13 +476,17 @@ function evaluateRootMoveWithDepth({
         depth,
       });
 
-      if (typeof replyScore === "number" && Number.isFinite(replyScore)) {
-        score += replyScore * recoveryWeight;
+      if (selfReply?.move) {
+        principalVariation.push(formatPvStep(selfReply.move, rootPlayer));
+      }
+
+      if (typeof selfReply?.score === "number" && Number.isFinite(selfReply.score)) {
+        score += selfReply.score * recoveryWeight;
       }
     }
   }
 
-  return score;
+  return { score, principalVariation };
 }
 
 function applyIterativeDeepeningSearchV2({
@@ -507,6 +533,7 @@ function applyIterativeDeepeningSearchV2({
   const rootCandidates = sortedBase.slice(0, searchConfig.rootCandidateLimit);
 
   const searchScores = new Map();
+  const searchLinesByMoveKey = new Map();
   let depthReached = 1;
   let timedOut = false;
 
@@ -516,7 +543,7 @@ function applyIterativeDeepeningSearchV2({
       break;
     }
 
-    const score = evaluateRootMoveWithDepth({
+    const evaluated = evaluateRootMoveWithDepth({
       rootEntry: entry,
       rootPlayer: player,
       matchState,
@@ -531,8 +558,12 @@ function applyIterativeDeepeningSearchV2({
       signal,
     });
 
-    if (typeof score === "number" && Number.isFinite(score)) {
-      searchScores.set(moveKey(entry.move), score);
+    if (typeof evaluated?.score === "number" && Number.isFinite(evaluated.score)) {
+      const key = moveKey(entry.move);
+      searchScores.set(key, evaluated.score);
+      if (Array.isArray(evaluated.principalVariation) && evaluated.principalVariation.length > 0) {
+        searchLinesByMoveKey.set(key, evaluated.principalVariation.filter(Boolean));
+      }
     }
   }
 
@@ -558,7 +589,7 @@ function applyIterativeDeepeningSearchV2({
         break;
       }
 
-      const score = evaluateRootMoveWithDepth({
+      const evaluated = evaluateRootMoveWithDepth({
         rootEntry: entry,
         rootPlayer: player,
         matchState,
@@ -573,8 +604,12 @@ function applyIterativeDeepeningSearchV2({
         signal,
       });
 
-      if (typeof score === "number" && Number.isFinite(score)) {
-        searchScores.set(moveKey(entry.move), score);
+      if (typeof evaluated?.score === "number" && Number.isFinite(evaluated.score)) {
+        const key = moveKey(entry.move);
+        searchScores.set(key, evaluated.score);
+        if (Array.isArray(evaluated.principalVariation) && evaluated.principalVariation.length > 0) {
+          searchLinesByMoveKey.set(key, evaluated.principalVariation.filter(Boolean));
+        }
       }
     }
 
@@ -600,13 +635,18 @@ function applyIterativeDeepeningSearchV2({
     };
   });
 
+  const sortedUpdated = sortScoredMoves(updated);
+  const bestKey = moveKey(sortedUpdated[0]?.move);
+  const principalVariation = searchLinesByMoveKey.get(bestKey) ?? [];
+
   return {
-    scoredMoves: sortScoredMoves(updated),
+    scoredMoves: sortedUpdated,
     depthReached,
     nodesExpanded: metrics.nodesExpanded,
     cacheHits: metrics.cacheHits,
     timedOut,
     searchedCandidateCount: searchScores.size,
+    principalVariation,
   };
 }
 
@@ -738,6 +778,9 @@ function computeDecision(payload) {
     searchCacheHits: searchResult.cacheHits ?? 0,
     searchTimedOut: searchResult.timedOut === true,
     searchedCandidateCount: searchResult.searchedCandidateCount ?? 0,
+    searchPrincipalVariation: Array.isArray(searchResult.principalVariation)
+      ? searchResult.principalVariation
+      : [],
   };
 
   DECISION_CACHE.set(cacheKey, result);
@@ -759,3 +802,8 @@ self.addEventListener("message", (event) => {
     self.postMessage({ id, error: error?.message ?? "AI worker failed" });
   }
 });
+
+
+
+
+

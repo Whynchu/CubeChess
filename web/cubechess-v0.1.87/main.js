@@ -8,7 +8,7 @@ import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
 import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.86";
+const VERSION = "0.1.87";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 const AI_BUDGET_MAX_MS = 10000;
@@ -3232,6 +3232,7 @@ recenterCameraTarget();
 primePieceModels();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
 
 
 
