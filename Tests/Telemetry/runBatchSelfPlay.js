@@ -17,7 +17,7 @@ import {
   TranspositionCache,
 } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.113";
+const VERSION = "0.1.114";
 const MODE = Object.freeze({ Deterministic: "deterministic", Chaotic: "chaotic" });
 const SEARCH_NODE_CACHE = new TranspositionCache(4096);
 

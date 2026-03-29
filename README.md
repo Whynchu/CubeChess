@@ -10,7 +10,7 @@ This repository contains the design, planning, and early runtime implementation 
 ## Live Preview
 
 After the Pages workflow runs, the viewer is published at:
-- `https://whynchu.github.io/CubeChess/cubechess-v0.1.113/`
+- `https://whynchu.github.io/CubeChess/cubechess-v0.1.114/`
 
 Current viewer includes:
 - WebGL cube board shell + internal grid
@@ -70,7 +70,7 @@ See [Docs/implementation/cube_chess_ai_champion_plan.md](Docs/implementation/cub
 - M2 movement rules implemented and tested
 - WebGL viewer added for GitHub Pages visual feedback
 - M3 turn/seat/timeout systems implemented
-- M4 autoplay viewer loop now visible in WebGL (v0.1.113 knight-forward opening formation experiment on top of the deeper search planner)
+- M4 autoplay viewer loop now visible in WebGL (v0.1.114 knight-forward AI tuning pass with organic queen restraint and leaner search)
 
 ## License
 
