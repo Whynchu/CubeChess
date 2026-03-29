@@ -3,6 +3,7 @@
 Source context:
 - `Docs/implementation/cube_chess_implementation_plan.md`
 - `Docs/implementation/cube_chess_m4_task_board.md`
+- `Docs/implementation/cube_chess_ai_personality_plan.md`
 - `agents.md`
 
 ## 1. Purpose
