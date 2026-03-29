@@ -10,7 +10,7 @@ This repository contains the design, planning, and early runtime implementation 
 ## Live Preview
 
 After the Pages workflow runs, the viewer is published at:
-- `https://whynchu.github.io/CubeChess/cubechess-v0.1.94/`
+- `https://whynchu.github.io/CubeChess/cubechess-v0.1.95/`
 
 Current viewer includes:
 - WebGL cube board shell + internal grid
@@ -70,11 +70,12 @@ See [Docs/implementation/cube_chess_ai_champion_plan.md](Docs/implementation/cub
 - M2 movement rules implemented and tested
 - WebGL viewer added for GitHub Pages visual feedback
 - M3 turn/seat/timeout systems implemented
-- M4 autoplay viewer loop now visible in WebGL (v0.1.94 piece glow overlay alignment + depth-test correction)
+- M4 autoplay viewer loop now visible in WebGL (v0.1.95 glow hotfix: restore piece visibility and keep 10% aligned shell)
 
 ## License
 
 No license has been added yet.
+
 
 
 
