@@ -9,23 +9,44 @@ import { TurnPhase, TurnStateMachine } from "../../Runtime/Core/Turn/index.js";
 import { presetAllAI } from "../../Runtime/Core/Seats/index.js";
 import {
   applyDangerAwareIterativeRescoring,
+  applyIterativeDeepeningSearch,
   classifyBoardPhase,
   createTurnThreatContext,
   evaluateHeuristicMove,
+  pruneScoredCandidates,
+  TranspositionCache,
 } from "../../Runtime/Core/AI/index.js";
 
-const VERSION = "0.1.111";
+const VERSION = "0.1.112";
 const MODE = Object.freeze({ Deterministic: "deterministic", Chaotic: "chaotic" });
+const SEARCH_NODE_CACHE = new TranspositionCache(4096);
+
+const DEFAULT_SEARCH = Object.freeze({
+  budgetFraction: 0.4,
+  budgetMinMs: 60,
+  budgetMaxMs: 1200,
+  rootCandidateLimit: 16,
+  depth3CandidateLimit: 8,
+  depth4CandidateLimit: 4,
+  opponentMoveLimit: 14,
+  selfMoveLimit: 14,
+  minDepth3BudgetMs: 45,
+  minDepth4BudgetMs: 80,
+  replyWeight: 0.9,
+  recoveryWeight: 0.65,
+  counterReplyWeight: 0.58,
+  blendFactor: 0.78,
+});
 
 const PERSONA = Object.freeze({
-  Red: { id: "red_aggressor", dangerWeight: 0.7, poolLimit: 110, maxRisk: 9.5 },
-  Orange: { id: "orange_raider", dangerWeight: 0.78, poolLimit: 102, maxRisk: 7.8 },
-  Yellow: { id: "yellow_opportunist", dangerWeight: 0.9, poolLimit: 96, maxRisk: 6.4 },
-  Green: { id: "green_swarm", dangerWeight: 0.88, poolLimit: 108, maxRisk: 7.1 },
-  Cyan: { id: "cyan_tempo", dangerWeight: 0.82, poolLimit: 100, maxRisk: 7.1 },
-  Blue: { id: "blue_fortress", dangerWeight: 1.08, poolLimit: 92, maxRisk: 4.8 },
-  Purple: { id: "purple_controller", dangerWeight: 0.95, poolLimit: 96, maxRisk: 6.2 },
-  Pink: { id: "pink_trickster", dangerWeight: 0.84, poolLimit: 104, maxRisk: 7.6 },
+  Red: { id: "red_aggressor", dangerWeight: 0.7, poolLimit: 110, maxRisk: 9.5, search: { budgetFraction: 0.4, rootCandidateLimit: 18, depth3CandidateLimit: 8, depth4CandidateLimit: 4, opponentMoveLimit: 12, selfMoveLimit: 14, minDepth3BudgetMs: 45, minDepth4BudgetMs: 85, replyWeight: 0.8, recoveryWeight: 0.74, counterReplyWeight: 0.56, blendFactor: 0.8 } },
+  Orange: { id: "orange_raider", dangerWeight: 0.78, poolLimit: 102, maxRisk: 7.8, search: { budgetFraction: 0.39, rootCandidateLimit: 16, depth3CandidateLimit: 8, depth4CandidateLimit: 4, opponentMoveLimit: 12, selfMoveLimit: 13, minDepth3BudgetMs: 45, minDepth4BudgetMs: 82, replyWeight: 0.86, recoveryWeight: 0.7, counterReplyWeight: 0.57, blendFactor: 0.79 } },
+  Yellow: { id: "yellow_opportunist", dangerWeight: 0.9, poolLimit: 96, maxRisk: 6.4, search: { budgetFraction: 0.38, rootCandidateLimit: 15, depth3CandidateLimit: 7, depth4CandidateLimit: 3, opponentMoveLimit: 14, selfMoveLimit: 12, minDepth3BudgetMs: 45, minDepth4BudgetMs: 80, replyWeight: 0.94, recoveryWeight: 0.66, counterReplyWeight: 0.6, blendFactor: 0.78 } },
+  Green: { id: "green_swarm", dangerWeight: 0.88, poolLimit: 108, maxRisk: 7.1, search: { budgetFraction: 0.39, rootCandidateLimit: 16, depth3CandidateLimit: 8, depth4CandidateLimit: 4, opponentMoveLimit: 12, selfMoveLimit: 14, minDepth3BudgetMs: 45, minDepth4BudgetMs: 82, replyWeight: 0.9, recoveryWeight: 0.7, counterReplyWeight: 0.58, blendFactor: 0.79 } },
+  Cyan: { id: "cyan_tempo", dangerWeight: 0.82, poolLimit: 100, maxRisk: 7.1, search: { budgetFraction: 0.39, rootCandidateLimit: 16, depth3CandidateLimit: 8, depth4CandidateLimit: 4, opponentMoveLimit: 13, selfMoveLimit: 13, minDepth3BudgetMs: 45, minDepth4BudgetMs: 82, replyWeight: 0.88, recoveryWeight: 0.7, counterReplyWeight: 0.58, blendFactor: 0.79 } },
+  Blue: { id: "blue_fortress", dangerWeight: 1.08, poolLimit: 92, maxRisk: 4.8, search: { budgetFraction: 0.4, rootCandidateLimit: 15, depth3CandidateLimit: 7, depth4CandidateLimit: 4, opponentMoveLimit: 14, selfMoveLimit: 13, minDepth3BudgetMs: 50, minDepth4BudgetMs: 90, replyWeight: 1.03, recoveryWeight: 0.66, counterReplyWeight: 0.64, blendFactor: 0.8 } },
+  Purple: { id: "purple_controller", dangerWeight: 0.95, poolLimit: 96, maxRisk: 6.2, search: { budgetFraction: 0.43, rootCandidateLimit: 18, depth3CandidateLimit: 10, depth4CandidateLimit: 6, opponentMoveLimit: 15, selfMoveLimit: 14, minDepth3BudgetMs: 55, minDepth4BudgetMs: 105, replyWeight: 0.97, recoveryWeight: 0.72, counterReplyWeight: 0.66, blendFactor: 0.82 } },
+  Pink: { id: "pink_trickster", dangerWeight: 0.84, poolLimit: 104, maxRisk: 7.6, search: { budgetFraction: 0.39, rootCandidateLimit: 16, depth3CandidateLimit: 8, depth4CandidateLimit: 4, opponentMoveLimit: 13, selfMoveLimit: 13, minDepth3BudgetMs: 45, minDepth4BudgetMs: 82, replyWeight: 0.9, recoveryWeight: 0.7, counterReplyWeight: 0.58, blendFactor: 0.79 } },
 });
 
 const DEFAULTS = Object.freeze({
@@ -62,7 +83,10 @@ function rngFactory(seed) {
   return () => ((s = (Math.imul(1664525, s) + 1013904223) >>> 0) / 0x100000000);
 }
 
-function inferType(pieceId) { const p = String(pieceId ?? "").split("-"); return p.length >= 2 ? p[1] : "Piece"; }
+function inferType(pieceId) {
+  const p = String(pieceId ?? "").split("-");
+  return p.length >= 2 ? p[1] : "Piece";
+}
 
 function sortScored(scored) {
   return [...scored].sort((a, b) => {
@@ -77,27 +101,6 @@ function sortScored(scored) {
 function scoreGapTop2(entries) {
   if (!Array.isArray(entries) || entries.length < 2) return 0;
   return Math.max(0, Number(entries[0]?.score ?? 0) - Number(entries[1]?.score ?? 0));
-}
-
-function pruneCandidates(entries, limit = 96, minPerPiece = 2) {
-  const sorted = sortScored(entries);
-  const kept = [];
-  const byPiece = new Map();
-  for (const e of sorted) {
-    if (kept.length >= limit) break;
-    const pieceId = e.move?.pieceId;
-    if (!pieceId) continue;
-    const count = byPiece.get(pieceId) ?? 0;
-    if (count < minPerPiece || kept.length < Math.floor(limit * 0.5)) {
-      kept.push(e);
-      byPiece.set(pieceId, count + 1);
-    }
-  }
-  for (const e of sorted) {
-    if (kept.length >= limit) break;
-    if (!kept.includes(e)) kept.push(e);
-  }
-  return kept;
 }
 
 function entryRisk(e) {
@@ -124,8 +127,8 @@ function chaoticPenalty(entry, recentMoves, player) {
   return Number(((samePiece * 0.55) + (Math.max(0, sameType - 1) * 0.34) + (sameDest * 0.26) + (backtrack ? 0.22 : 0)).toFixed(4));
 }
 
-function chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorContext, mode, rng }) {
-  const p = PERSONA[player] ?? { id: "default", dangerWeight: 0.8, poolLimit: 96, maxRisk: Number.POSITIVE_INFINITY };
+function chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorContext, mode, rng, aiBudgetMs }) {
+  const p = PERSONA[player] ?? { id: "default", dangerWeight: 0.8, poolLimit: 96, maxRisk: Number.POSITIVE_INFINITY, search: DEFAULT_SEARCH };
   const boardPhase = classifyBoardPhase(matchState);
   const threatContext = createTurnThreatContext({ matchState, occupancyMap, player });
 
@@ -145,9 +148,31 @@ function chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorCont
   });
 
   const dangerScored = sortScored(danger.scoredMoves ?? scored);
-  const candidatePool = pruneCandidates(dangerScored, p.poolLimit, 2);
-  const personaPool = candidatePool.filter((e) => entryRisk(e) <= p.maxRisk);
-  const finalPool = personaPool.length > 0 ? personaPool : candidatePool;
+  const candidatePool = pruneScoredCandidates(dangerScored, { limit: p.poolLimit, minPerPiece: 2 });
+  const searchConfig = { ...DEFAULT_SEARCH, ...(p.search ?? {}) };
+  const searchBudgetMs = Math.max(
+    searchConfig.budgetMinMs ?? DEFAULT_SEARCH.budgetMinMs,
+    Math.min(
+      searchConfig.budgetMaxMs ?? DEFAULT_SEARCH.budgetMaxMs,
+      Math.floor(aiBudgetMs * (searchConfig.budgetFraction ?? DEFAULT_SEARCH.budgetFraction))
+    )
+  );
+  const searchResult = applyIterativeDeepeningSearch({
+    dangerRescored: dangerScored,
+    candidatePool,
+    matchState,
+    player,
+    behaviorContext,
+    budgetMs: searchBudgetMs,
+    signal: null,
+    config: searchConfig,
+    searchNodeCache: SEARCH_NODE_CACHE,
+  });
+
+  const searchedDanger = sortScored(searchResult.scoredMoves ?? dangerScored);
+  const searchedPool = pruneScoredCandidates(searchedDanger, { limit: p.poolLimit, minPerPiece: 2 });
+  const personaPool = searchedPool.filter((e) => entryRisk(e) <= p.maxRisk);
+  const finalPool = personaPool.length > 0 ? personaPool : searchedPool;
 
   let ranked = finalPool;
   if (mode === MODE.Chaotic) {
@@ -158,7 +183,7 @@ function chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorCont
   const gap = scoreGapTop2(ranked);
   const topK = mode === MODE.Deterministic ? 1 : (gap >= 6 ? 2 : gap >= 3 ? 3 : gap >= 1.5 ? 4 : gap >= 0.8 ? 5 : Math.min(7, ranked.length));
 
-  let chosen = ranked[0] ?? dangerScored[0] ?? scored[0] ?? { move: legalMoves[0], score: 0, breakdown: null };
+  let chosen = ranked[0] ?? searchedDanger[0] ?? dangerScored[0] ?? scored[0] ?? { move: legalMoves[0], score: 0, breakdown: null };
   let selectedBy = "deterministic_best";
   if (mode === MODE.Chaotic && ranked.length > 0) {
     const pool = ranked.slice(0, Math.max(1, topK));
@@ -182,14 +207,19 @@ function chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorCont
       usedChaoticRerank: mode === MODE.Chaotic,
       candidatePoolCount: candidatePool.length,
       personaCandidatePoolCount: finalPool.length,
-      personaRiskRejectedCount: Math.max(0, candidatePool.length - finalPool.length),
+      personaRiskRejectedCount: Math.max(0, searchedPool.length - finalPool.length),
+      searchDepthReached: searchResult.depthReached ?? 0,
+      searchNodesExpanded: searchResult.nodesExpanded ?? 0,
+      searchCacheHits: searchResult.cacheHits ?? 0,
+      searchTimedOut: searchResult.timedOut === true,
+      searchedCandidateCount: searchResult.searchedCandidateCount ?? 0,
       chosenMove: {
         pieceId: chosen.move.pieceId,
         from: chosen.move.from,
         to: chosen.move.to,
         score: Number((chosen.score ?? 0).toFixed(3)),
       },
-      deterministicBest: dangerScored[0] ? { pieceId: dangerScored[0].move.pieceId, to: dangerScored[0].move.to, score: Number((dangerScored[0].score ?? 0).toFixed(3)) } : null,
+      deterministicBest: searchedDanger[0] ? { pieceId: searchedDanger[0].move.pieceId, to: searchedDanger[0].move.to, score: Number((searchedDanger[0].score ?? 0).toFixed(3)) } : null,
       topCandidates: ranked.slice(0, 8).map((e) => ({ pieceId: e.move.pieceId, to: e.move.to, score: Number((e.score ?? 0).toFixed(3)) })),
     },
   };
@@ -253,7 +283,7 @@ async function runGame(gameIndex, options) {
     const turnStart = performance.now();
     const result = await machine.resolveAITurn({
       requestMove: ({ legalMoves, player }) => {
-        const c = chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorContext, mode: options.mode, rng });
+        const c = chooseMove({ matchState, occupancyMap, player, legalMoves, behaviorContext, mode: options.mode, rng, aiBudgetMs: options.aiBudgetMs });
         turnTrace = c.trace;
         return c.move;
       },
