@@ -7,6 +7,7 @@ import { PIECE_TYPES, PlayerId } from "../Runtime/Core/GameState/constants.js";
 import { MatchState } from "../Runtime/Core/GameState/matchState.js";
 import { generateStartingPieces } from "../Runtime/Core/Formation/formationGenerator.js";
 import { initializeMatchState } from "../Runtime/Core/GameState/initializeMatchState.js";
+import { GameModeId } from "../Runtime/Core/Modes/gameModes.js";
 import {
   BISHOP_DIRECTIONS,
   KING_DIRECTIONS,
@@ -42,11 +43,11 @@ function run(name, fn) {
   pendingTests.push(testPromise);
 }
 
-function buildPiece(id, owner, type, x, y, z) {
-  return new Piece({ id, owner, type, coord: new Coord3(x, y, z) });
+function buildPiece(id, owner, type, x, y, z, options = {}) {
+  return new Piece({ id, owner, type, coord: new Coord3(x, y, z), ...options });
 }
 
-function buildScenario(pieces, activePlayer = PlayerId.Yellow) {
+function buildScenario(pieces, activePlayer = PlayerId.Yellow, options = {}) {
   const occupancyMap = new OccupancyMap();
   for (const piece of pieces) {
     const placed = occupancyMap.place(piece);
@@ -61,6 +62,12 @@ function buildScenario(pieces, activePlayer = PlayerId.Yellow) {
     eliminatedPlayers: [],
     turnCount: 0,
     lastMove: null,
+    turnOrder: options.turnOrder,
+    gameModeId: options.gameModeId,
+    resultType: options.resultType ?? null,
+    enPassantTarget: options.enPassantTarget ?? null,
+    noProgressHalfmoveClock: options.noProgressHalfmoveClock ?? 0,
+    repetitionCounts: options.repetitionCounts ?? {},
   });
 
   return { matchState, occupancyMap };
@@ -331,6 +338,224 @@ run("TurnStateMachine applies king-capture elimination and declares winner", asy
   assert.equal(resolved.winner, PlayerId.Yellow);
   assert.equal(machine.phase, TurnPhase.MatchEnded);
   assert.equal(matchState.eliminatedPlayers.has(PlayerId.Red), true);
+});
+
+run("Duel king can castle when path is clear and safe", () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 4, 7, 7);
+  const yellowRookA = buildPiece("Yellow-Rook-00", PlayerId.Yellow, PIECE_TYPES.Rook, 0, 7, 7);
+  const yellowRookB = buildPiece("Yellow-Rook-01", PlayerId.Yellow, PIECE_TYPES.Rook, 7, 7, 7);
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 4, 0, 0);
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowKing, yellowRookA, yellowRookB, redKing],
+    PlayerId.Yellow,
+    { gameModeId: GameModeId.Duel2P, turnOrder: [PlayerId.Yellow, PlayerId.Red] }
+  );
+
+  const moves = getLegalMoves(matchState, occupancyMap, yellowKing.id);
+  const castleMoves = moves.filter((move) => move.special === "castle");
+
+  assert.equal(castleMoves.length, 2);
+  assert.ok(castleMoves.some((move) => move.to.x === 2 && move.rookMove?.to?.x === 3), "Expected queen-side castle");
+  assert.ok(castleMoves.some((move) => move.to.x === 6 && move.rookMove?.to?.x === 5), "Expected king-side castle");
+});
+
+run("Duel castling is rejected when transit square is threatened", () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 4, 7, 7);
+  const yellowRook = buildPiece("Yellow-Rook-01", PlayerId.Yellow, PIECE_TYPES.Rook, 7, 7, 7);
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 4, 0, 0);
+  const redRook = buildPiece("Red-Rook-00", PlayerId.Red, PIECE_TYPES.Rook, 5, 0, 7);
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowKing, yellowRook, redKing, redRook],
+    PlayerId.Yellow,
+    { gameModeId: GameModeId.Duel2P, turnOrder: [PlayerId.Yellow, PlayerId.Red] }
+  );
+
+  const moves = getLegalMoves(matchState, occupancyMap, yellowKing.id);
+  assert.equal(moves.some((move) => move.special === "castle" && move.to.x === 6), false);
+});
+
+run("Duel castling repositions rook and marks moved pieces", async () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 4, 7, 7);
+  const yellowRook = buildPiece("Yellow-Rook-01", PlayerId.Yellow, PIECE_TYPES.Rook, 7, 7, 7);
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 4, 0, 0);
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowKing, yellowRook, redKing],
+    PlayerId.Yellow,
+    { gameModeId: GameModeId.Duel2P, turnOrder: [PlayerId.Yellow, PlayerId.Red] }
+  );
+
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: 100,
+  });
+
+  machine.beginTurn();
+  const result = await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.special === "castle" && move.to.x === 6) ?? legalMoves[0],
+  });
+
+  assert.equal(result.type, "TurnResolved");
+  assert.equal(result.move.special, "castle");
+  assert.deepEqual(yellowKing.coord.toJSON(), { x: 6, y: 7, z: 7 });
+  assert.deepEqual(yellowRook.coord.toJSON(), { x: 5, y: 7, z: 7 });
+  assert.equal(yellowKing.hasMoved, true);
+  assert.equal(yellowRook.hasMoved, true);
+});
+
+run("Duel en passant appears only on immediate reply to straight double-step", async () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 4, 7, 7);
+  const yellowPawn = buildPiece("Yellow-Pawn-00", PlayerId.Yellow, PIECE_TYPES.Pawn, 4, 6, 6, { forward: { x: 0, y: 0, z: -1 } });
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 4, 0, 0);
+  const redPawn = buildPiece("Red-Pawn-00", PlayerId.Red, PIECE_TYPES.Pawn, 5, 6, 4, { forward: { x: 0, y: 0, z: 1 } });
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowKing, yellowPawn, redKing, redPawn],
+    PlayerId.Yellow,
+    { gameModeId: GameModeId.Duel2P, turnOrder: [PlayerId.Yellow, PlayerId.Red] }
+  );
+
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: 100,
+  });
+
+  machine.beginTurn();
+  await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.pieceId === yellowPawn.id && move.to.x === 4 && move.to.y === 6 && move.to.z === 4) ?? legalMoves[0],
+  });
+
+  assert.equal(matchState.enPassantTarget?.vulnerablePawnId, yellowPawn.id);
+
+  const redMoves = getLegalMoves(matchState, occupancyMap, redPawn.id);
+  const enPassant = redMoves.find((move) => move.special === "en_passant");
+
+  assert.ok(enPassant, "Expected en passant capture to be legal on immediate reply");
+  assert.deepEqual(enPassant.to, { x: 4, y: 6, z: 5 });
+  assert.equal(enPassant.capturedPieceId, yellowPawn.id);
+
+  const secondTurn = machine.beginTurn();
+  assert.equal(secondTurn.player, PlayerId.Red);
+  const result = await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.special === "en_passant") ?? legalMoves[0],
+  });
+
+  assert.equal(result.move.special, "en_passant");
+  assert.equal(yellowPawn.alive, false);
+  assert.deepEqual(redPawn.coord.toJSON(), { x: 4, y: 6, z: 5 });
+});
+
+run("Duel en passant expires after one reply window", async () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 4, 7, 7);
+  const yellowPawn = buildPiece("Yellow-Pawn-00", PlayerId.Yellow, PIECE_TYPES.Pawn, 4, 6, 6, { forward: { x: 0, y: 0, z: -1 } });
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 4, 0, 0);
+  const redPawn = buildPiece("Red-Pawn-00", PlayerId.Red, PIECE_TYPES.Pawn, 5, 6, 4, { forward: { x: 0, y: 0, z: 1 } });
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowKing, yellowPawn, redKing, redPawn],
+    PlayerId.Yellow,
+    { gameModeId: GameModeId.Duel2P, turnOrder: [PlayerId.Yellow, PlayerId.Red] }
+  );
+
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: 100,
+  });
+
+  machine.beginTurn();
+  await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.pieceId === yellowPawn.id && move.to.x === 4 && move.to.y === 6 && move.to.z === 4) ?? legalMoves[0],
+  });
+
+  machine.beginTurn();
+  await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.pieceId === redKing.id && !move.isCapture) ?? legalMoves[0],
+  });
+
+  machine.beginTurn();
+  await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.pieceId === yellowKing.id && !move.isCapture) ?? legalMoves[0],
+  });
+
+  const redMoves = getLegalMoves(matchState, occupancyMap, redPawn.id);
+  assert.equal(redMoves.some((move) => move.special === "en_passant"), false);
+  assert.equal(matchState.enPassantTarget, null);
+});
+
+run("Duel ends in draw on threefold repetition", async () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 0, 7, 7, { hasMoved: true });
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 7, 0, 0, { hasMoved: true });
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowKing, redKing],
+    PlayerId.Yellow,
+    { gameModeId: GameModeId.Duel2P, turnOrder: [PlayerId.Yellow, PlayerId.Red] }
+  );
+
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: 100,
+  });
+
+  const moveSequence = [
+    { player: PlayerId.Yellow, to: { x: 1, y: 7, z: 7 } },
+    { player: PlayerId.Red, to: { x: 6, y: 0, z: 0 } },
+    { player: PlayerId.Yellow, to: { x: 0, y: 7, z: 7 } },
+    { player: PlayerId.Red, to: { x: 7, y: 0, z: 0 } },
+    { player: PlayerId.Yellow, to: { x: 1, y: 7, z: 7 } },
+    { player: PlayerId.Red, to: { x: 6, y: 0, z: 0 } },
+    { player: PlayerId.Yellow, to: { x: 0, y: 7, z: 7 } },
+    { player: PlayerId.Red, to: { x: 7, y: 0, z: 0 } },
+  ];
+
+  let finalResult = null;
+  for (const expected of moveSequence) {
+    const begin = machine.beginTurn();
+    assert.equal(begin.player, expected.player);
+    finalResult = await machine.resolveAITurn({
+      requestMove: ({ legalMoves }) => legalMoves.find((move) => move.to.x === expected.to.x && move.to.y === expected.to.y && move.to.z === expected.to.z) ?? legalMoves[0],
+    });
+  }
+
+  assert.equal(finalResult?.type, "MatchEnded");
+  assert.equal(finalResult?.winner ?? null, null);
+  assert.equal(finalResult?.resultType, "draw_repetition");
+  assert.equal(machine.phase, TurnPhase.MatchEnded);
+});
+
+run("Duel ends in draw on no-progress halfmove limit", async () => {
+  const yellowKing = buildPiece("Yellow-King-00", PlayerId.Yellow, PIECE_TYPES.King, 0, 7, 7);
+  const redKing = buildPiece("Red-King-00", PlayerId.Red, PIECE_TYPES.King, 7, 0, 0);
+  const { matchState, occupancyMap } = buildScenario(
+    [yellowKing, redKing],
+    PlayerId.Yellow,
+    {
+      gameModeId: GameModeId.Duel2P,
+      turnOrder: [PlayerId.Yellow, PlayerId.Red],
+      noProgressHalfmoveClock: 99,
+    }
+  );
+
+  const machine = new TurnStateMachine({
+    matchState,
+    occupancyMap,
+    seatConfig: presetAllAI(),
+    aiBudgetMs: 100,
+  });
+
+  machine.beginTurn();
+  const result = await machine.resolveAITurn({
+    requestMove: ({ legalMoves }) => legalMoves.find((move) => move.to.x === 1 && move.to.y === 7 && move.to.z === 7) ?? legalMoves[0],
+  });
+
+  assert.equal(result.type, "MatchEnded");
+  assert.equal(result.winner ?? null, null);
+  assert.equal(result.resultType, "draw_no_progress");
+  assert.equal(machine.phase, TurnPhase.MatchEnded);
 });
 
 run("AI phase classifier identifies opening, midgame, and endgame", () => {
