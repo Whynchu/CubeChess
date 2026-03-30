@@ -28,6 +28,8 @@ export function initializeMatchState(options = {}) {
     turnCount: 0,
     lastMove: null,
     turnOrder,
+    gameModeId,
+    resultType: null,
   });
 
   return {

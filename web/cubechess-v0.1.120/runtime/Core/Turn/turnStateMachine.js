@@ -1,8 +1,9 @@
 import { Coord3 } from "../GameState/coord3.js";
 import { PIECE_TYPES, TURN_ORDER } from "../GameState/constants.js";
-import { getLegalMoves } from "../Rules/legalMoves.js";
+import { getLegalMoves, isPlayerKingUnderThreat } from "../Rules/legalMoves.js";
 import { runAITurn } from "../AI/aiTurnRunner.js";
 import { ControllerType, getControllerTypeForPlayer } from "../Seats/seatConfig.js";
+import { GameModeId } from "../Modes/gameModes.js";
 
 export const TurnPhase = Object.freeze({
   Idle: "Idle",
@@ -22,6 +23,10 @@ const ALLOWED_TRANSITIONS = Object.freeze({
 
 function getSeatTurnOrder(matchState) {
   return Array.isArray(matchState?.turnOrder) && matchState.turnOrder.length > 0 ? matchState.turnOrder : TURN_ORDER;
+}
+
+function isDuelMatch(matchState) {
+  return matchState?.gameModeId === GameModeId.Duel2P;
 }
 
 function sortMovesGlobalDeterministic(moves) {
@@ -129,6 +134,16 @@ export function getNextActivePlayer(matchState, currentPlayer) {
   return null;
 }
 
+function getDuelNoMoveResolution(matchState, occupancyMap, player) {
+  const inCheck = isPlayerKingUnderThreat(matchState, occupancyMap, player);
+  const remainingOpponents = getRemainingPlayers(matchState).filter((candidate) => candidate !== player);
+
+  return {
+    resultType: inCheck ? "checkmate" : "stalemate",
+    winner: inCheck ? (remainingOpponents[0] ?? null) : null,
+  };
+}
+
 export function applyValidatedMove(matchState, occupancyMap, move) {
   const piece = findAlivePieceById(matchState, move.pieceId);
   if (!piece) {
@@ -207,6 +222,7 @@ export class TurnStateMachine {
     this.phase = TurnPhase.Idle;
     this.pendingTurn = null;
     this.winner = null;
+    this.resultType = matchState.resultType ?? null;
 
     this.#reconcileMatchStatus();
   }
@@ -221,13 +237,25 @@ export class TurnStateMachine {
 
   #reconcileMatchStatus() {
     synchronizeEliminations(this.matchState, this.occupancyMap);
-    this.winner = getWinner(this.matchState);
-    if (this.winner) {
+    const naturalWinner = getWinner(this.matchState);
+    if (naturalWinner) {
+      this.winner = naturalWinner;
+      this.resultType = this.resultType ?? "victory";
+      this.matchState.resultType = this.resultType;
       if (this.phase !== TurnPhase.MatchEnded) {
         this.phase = TurnPhase.MatchEnded;
       }
       return;
     }
+
+    if (this.phase === TurnPhase.MatchEnded) {
+      this.matchState.resultType = this.resultType;
+      return;
+    }
+
+    this.winner = null;
+    this.resultType = null;
+    this.matchState.resultType = null;
 
     if (this.matchState.eliminatedPlayers.has(this.matchState.activePlayer)) {
       const next = getNextActivePlayer(this.matchState, this.matchState.activePlayer);
@@ -239,7 +267,7 @@ export class TurnStateMachine {
 
   beginTurn() {
     if (this.phase === TurnPhase.MatchEnded) {
-      return { type: "MatchEnded", winner: this.winner };
+      return { type: "MatchEnded", winner: this.winner, resultType: this.resultType };
     }
     if (this.phase !== TurnPhase.Idle) {
       throw new Error(`Cannot begin turn while in phase ${this.phase}`);
@@ -247,13 +275,30 @@ export class TurnStateMachine {
 
     this.#reconcileMatchStatus();
     if (this.phase === TurnPhase.MatchEnded) {
-      return { type: "MatchEnded", winner: this.winner };
+      return { type: "MatchEnded", winner: this.winner, resultType: this.resultType };
     }
 
     const player = this.matchState.activePlayer;
     const legalMoves = collectLegalMovesForPlayer(this.matchState, this.occupancyMap, player);
 
     if (legalMoves.length === 0) {
+      if (isDuelMatch(this.matchState)) {
+        const duelResolution = getDuelNoMoveResolution(this.matchState, this.occupancyMap, player);
+        this.pendingTurn = null;
+        this.matchState.lastMove = null;
+        this.winner = duelResolution.winner;
+        this.resultType = duelResolution.resultType;
+        this.matchState.resultType = duelResolution.resultType;
+        this.#transition(TurnPhase.MatchEnded);
+        return {
+          type: "MatchEnded",
+          player,
+          winner: this.winner,
+          resultType: this.resultType,
+          legalMoves: [],
+        };
+      }
+
       this.#transition(TurnPhase.ResolvingMove);
       const result = this.#resolvePassTurn(player);
       return { ...result, legalMoves: [] };
@@ -359,6 +404,7 @@ export class TurnStateMachine {
         type: "MatchEnded",
         player,
         winner: this.winner,
+        resultType: this.resultType,
         passed: true,
       };
     }
@@ -370,6 +416,7 @@ export class TurnStateMachine {
         type: "MatchEnded",
         player,
         winner: this.winner,
+        resultType: this.resultType,
         passed: true,
       };
     }
@@ -402,6 +449,7 @@ export class TurnStateMachine {
         move: applied.move,
         eliminatedPlayer: applied.eliminatedPlayer,
         winner: this.winner,
+        resultType: this.resultType,
       };
     }
 
@@ -416,6 +464,7 @@ export class TurnStateMachine {
         move: applied.move,
         eliminatedPlayer: applied.eliminatedPlayer,
         winner: this.winner,
+        resultType: this.resultType,
       };
     }
 
@@ -433,6 +482,3 @@ export class TurnStateMachine {
     };
   }
 }
-
-
-

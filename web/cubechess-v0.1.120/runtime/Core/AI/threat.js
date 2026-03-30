@@ -3,7 +3,7 @@ import { MatchState } from "../GameState/matchState.js";
 import { OccupancyMap } from "../GameState/occupancyMap.js";
 import { Piece } from "../GameState/piece.js";
 import { PIECE_TYPES } from "../GameState/constants.js";
-import { getLegalMoves } from "../Rules/legalMoves.js";
+import { getThreatenedCoordsForPiece } from "../Rules/legalMoves.js";
 import { collectLegalMovesForPlayer } from "../Turn/turnStateMachine.js";
 
 function coordKey(coord) {
@@ -23,11 +23,12 @@ export function buildThreatMapForPlayer(matchState, occupancyMap, player) {
     .sort((a, b) => a.id.localeCompare(b.id));
 
   for (const piece of pieces) {
-    const moves = getLegalMoves(matchState, occupancyMap, piece.id);
-    for (const move of moves) {
-      incrementCount(attackCounts, coordKey(move.to));
-      if (move.capturedPieceId) {
-        attackedPieceIds.add(move.capturedPieceId);
+    const threatened = getThreatenedCoordsForPiece(matchState, occupancyMap, piece.id);
+    for (const coord of threatened) {
+      incrementCount(attackCounts, coordKey(coord));
+      const occupant = occupancyMap.tryGetPieceAt(coord);
+      if (occupant && occupant.owner !== player) {
+        attackedPieceIds.add(occupant.id);
       }
     }
   }
@@ -85,6 +86,7 @@ function cloneMatchContext(matchState) {
     type: piece.type,
     coord: Coord3.from(piece.coord),
     alive: piece.alive,
+    forward: piece.forward,
   }));
 
   const clone = new MatchState({
@@ -94,6 +96,8 @@ function cloneMatchContext(matchState) {
     turnCount: matchState.turnCount,
     lastMove: matchState.lastMove,
     turnOrder: [...(matchState.turnOrder ?? [])],
+    gameModeId: matchState.gameModeId,
+    resultType: matchState.resultType ?? null,
   });
 
   const occupancy = new OccupancyMap();

@@ -1,4 +1,7 @@
 import { PIECE_TYPES } from "../GameState/constants.js";
+import { MatchState } from "../GameState/matchState.js";
+import { OccupancyMap } from "../GameState/occupancyMap.js";
+import { Piece } from "../GameState/piece.js";
 import {
   BISHOP_DIRECTIONS,
   KING_DIRECTIONS,
@@ -15,6 +18,7 @@ import {
   isFriendly,
 } from "./moveUtils.js";
 import { Coord3 } from "../GameState/coord3.js";
+import { GameModeId } from "../Modes/gameModes.js";
 
 function maybeCoord(origin, dx, dy, dz, step = 1) {
   const x = origin.x + (dx * step);
@@ -220,11 +224,78 @@ function generatePawnMoves(piece, occupancyMap) {
   return moves;
 }
 
-export function getPseudoLegalMoves(matchState, occupancyMap, pieceId) {
-  return getLegalMoves(matchState, occupancyMap, pieceId).map((move) => move.to);
+function generateSlidingThreatCoords(piece, occupancyMap, directions) {
+  const threatened = [];
+
+  for (const [dx, dy, dz] of directions) {
+    let step = 1;
+    while (true) {
+      const destination = maybeCoord(piece.coord, dx, dy, dz, step);
+      if (!destination) {
+        break;
+      }
+
+      threatened.push(destination);
+      if (occupancyMap.tryGetPieceAt(destination)) {
+        break;
+      }
+
+      step += 1;
+    }
+  }
+
+  return threatened;
 }
 
-export function getLegalMoves(matchState, occupancyMap, pieceId) {
+function generateJumpThreatCoords(piece, offsets) {
+  const threatened = [];
+
+  for (const [dx, dy, dz] of offsets) {
+    const destination = maybeCoord(piece.coord, dx, dy, dz, 1);
+    if (destination) {
+      threatened.push(destination);
+    }
+  }
+
+  return threatened;
+}
+
+function generatePawnThreatCoords(piece) {
+  const threatened = [];
+  const forward = getPawnForwardVector(piece);
+
+  for (const [dx, dy, dz] of getPawnCaptureOffsets(forward)) {
+    const destination = maybeCoord(piece.coord, dx, dy, dz, 1);
+    if (destination) {
+      threatened.push(destination);
+    }
+  }
+
+  return threatened;
+}
+
+export function getThreatenedCoordsForPiece(matchState, occupancyMap, pieceId) {
+  const piece = getPieceById(matchState, pieceId);
+
+  switch (piece.type) {
+    case PIECE_TYPES.Rook:
+      return generateSlidingThreatCoords(piece, occupancyMap, ROOK_DIRECTIONS);
+    case PIECE_TYPES.Bishop:
+      return generateSlidingThreatCoords(piece, occupancyMap, BISHOP_DIRECTIONS);
+    case PIECE_TYPES.Queen:
+      return generateSlidingThreatCoords(piece, occupancyMap, QUEEN_DIRECTIONS);
+    case PIECE_TYPES.Knight:
+      return generateJumpThreatCoords(piece, KNIGHT_OFFSETS);
+    case PIECE_TYPES.King:
+      return generateJumpThreatCoords(piece, KING_DIRECTIONS);
+    case PIECE_TYPES.Pawn:
+      return generatePawnThreatCoords(piece);
+    default:
+      throw new Error(`Unsupported piece type: ${piece.type}`);
+  }
+}
+
+function generatePseudoLegalMoveRecords(matchState, occupancyMap, pieceId) {
   const piece = getPieceById(matchState, pieceId);
 
   let rawMoves;
@@ -254,3 +325,130 @@ export function getLegalMoves(matchState, occupancyMap, pieceId) {
   return finalizeMoves(rawMoves);
 }
 
+function isDuelMatch(matchState) {
+  return matchState?.gameModeId === GameModeId.Duel2P;
+}
+
+function cloneMatchContext(matchState) {
+  const pieces = matchState.pieces.map((piece) => new Piece({
+    id: piece.id,
+    owner: piece.owner,
+    type: piece.type,
+    coord: Coord3.from(piece.coord),
+    alive: piece.alive,
+    forward: piece.forward,
+  }));
+
+  const clone = new MatchState({
+    pieces,
+    activePlayer: matchState.activePlayer,
+    eliminatedPlayers: [...matchState.eliminatedPlayers],
+    turnCount: matchState.turnCount,
+    lastMove: matchState.lastMove,
+    turnOrder: [...(matchState.turnOrder ?? [])],
+    gameModeId: matchState.gameModeId,
+    resultType: matchState.resultType ?? null,
+  });
+
+  const occupancy = new OccupancyMap();
+  for (const piece of pieces) {
+    if (piece.alive) {
+      occupancy.place(piece);
+    }
+  }
+
+  return { matchState: clone, occupancyMap: occupancy };
+}
+
+function applyPseudoLegalMoveToClone(matchState, occupancyMap, move) {
+  const piece = matchState.pieces.find((candidate) => candidate.alive && candidate.id === move.pieceId);
+  if (!piece) {
+    return false;
+  }
+
+  const destination = Coord3.from(move.to);
+  const target = occupancyMap.tryGetPieceAt(destination);
+  if (target && target.owner === piece.owner) {
+    return false;
+  }
+
+  if (target) {
+    target.alive = false;
+    occupancyMap.remove(target.id);
+  }
+
+  return occupancyMap.move(piece, destination);
+}
+
+function findAliveKing(matchState, player) {
+  return matchState.pieces.find((piece) => piece.alive && piece.owner === player && piece.type === PIECE_TYPES.King) ?? null;
+}
+
+function isSquareThreatenedByPlayer(matchState, occupancyMap, square, player) {
+  const enemyPieces = matchState.pieces
+    .filter((piece) => piece.alive && piece.owner === player)
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  const squareKey = Coord3.from(square).key();
+  for (const piece of enemyPieces) {
+    const threatened = getThreatenedCoordsForPiece(matchState, occupancyMap, piece.id);
+    if (threatened.some((coord) => coord.key() === squareKey)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function isPlayerKingUnderThreat(matchState, occupancyMap, player) {
+  const king = findAliveKing(matchState, player);
+  if (!king) {
+    return true;
+  }
+
+  const opponents = [...new Set(
+    matchState.pieces
+      .filter((piece) => piece.alive && piece.owner !== player && !matchState.eliminatedPlayers.has(piece.owner))
+      .map((piece) => piece.owner)
+  )].sort((a, b) => a.localeCompare(b));
+
+  for (const opponent of opponents) {
+    if (isSquareThreatenedByPlayer(matchState, occupancyMap, king.coord, opponent)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function filterMovesLeavingKingExposed(matchState, occupancyMap, player, pseudoMoves) {
+  const legalMoves = [];
+
+  for (const move of pseudoMoves) {
+    const clone = cloneMatchContext(matchState);
+    if (!applyPseudoLegalMoveToClone(clone.matchState, clone.occupancyMap, move)) {
+      continue;
+    }
+
+    if (!isPlayerKingUnderThreat(clone.matchState, clone.occupancyMap, player)) {
+      legalMoves.push(move);
+    }
+  }
+
+  return legalMoves;
+}
+
+export function getPseudoLegalMoves(matchState, occupancyMap, pieceId) {
+  return generatePseudoLegalMoveRecords(matchState, occupancyMap, pieceId).map((move) => move.to);
+}
+
+export function getLegalMoves(matchState, occupancyMap, pieceId) {
+  const piece = getPieceById(matchState, pieceId);
+  const pseudoMoves = generatePseudoLegalMoveRecords(matchState, occupancyMap, pieceId);
+
+  if (!isDuelMatch(matchState)) {
+    return pseudoMoves;
+  }
+
+  return filterMovesLeavingKingExposed(matchState, occupancyMap, piece.owner, pseudoMoves);
+}

@@ -1,4 +1,5 @@
 import { TURN_ORDER } from "./constants.js";
+import { GameModeId } from "../Modes/gameModes.js";
 
 export class MatchState {
   constructor({
@@ -8,6 +9,8 @@ export class MatchState {
     turnCount = 0,
     lastMove = null,
     turnOrder = TURN_ORDER,
+    gameModeId = GameModeId.Chaos8P,
+    resultType = null,
   }) {
     if (!Array.isArray(pieces)) {
       throw new Error("MatchState pieces must be an array");
@@ -25,6 +28,8 @@ export class MatchState {
     this.turnCount = turnCount;
     this.lastMove = lastMove;
     this.turnOrder = [...turnOrder];
+    this.gameModeId = gameModeId;
+    this.resultType = resultType;
   }
 
   toJSON() {
@@ -35,6 +40,8 @@ export class MatchState {
       turnCount: this.turnCount,
       lastMove: this.lastMove,
       turnOrder: this.turnOrder,
+      gameModeId: this.gameModeId,
+      resultType: this.resultType,
     };
   }
 }

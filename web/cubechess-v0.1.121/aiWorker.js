@@ -1,35 +1,29 @@
-import { Coord3 } from "../GameState/coord3.js";
-import { MatchState } from "../GameState/matchState.js";
-import { OccupancyMap } from "../GameState/occupancyMap.js";
-import { Piece } from "../GameState/piece.js";
-import { PIECE_TYPES } from "../GameState/constants.js";
-import { collectLegalMovesForPlayer } from "../Turn/turnStateMachine.js";
-import { createTurnThreatContext } from "./threat.js";
-import { evaluateHeuristicMove } from "./evaluator.js";
+import { MatchState } from "./runtime/Core/GameState/matchState.js";
+import { OccupancyMap } from "./runtime/Core/GameState/occupancyMap.js";
+import { Piece } from "./runtime/Core/GameState/piece.js";
+import { Coord3 } from "./runtime/Core/GameState/coord3.js";
+import { PIECE_TYPES } from "./runtime/Core/GameState/constants.js";
+import {
+  applyDangerAwareIterativeRescoring,
+  applyIterativeDeepeningSearch as applySharedIterativeDeepeningSearch,
+  buildDecisionContextHash,
+  buildMatchStateHash,
+  classifyBoardPhase,
+  createTurnThreatContext,
+  evaluateHeuristicMove,
+  pruneScoredCandidates as pruneSharedScoredCandidates,
+  TranspositionCache,
+} from "./runtime/Core/AI/index.js";
+import { collectLegalMovesForPlayer } from "./runtime/Core/Turn/turnStateMachine.js";
+
+const DECISION_CACHE = new TranspositionCache(768);
+const SEARCH_NODE_CACHE = new TranspositionCache(4096);
 
 function nowMs() {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
     return performance.now();
   }
   return Date.now();
-}
-
-export function moveKey(move) {
-  const to = move?.to ?? { x: "?", y: "?", z: "?" };
-  return String(move?.pieceId ?? "piece") + ":" + to.x + "," + to.y + "," + to.z;
-}
-
-export function formatPvStep(move, player) {
-  if (!move) {
-    return null;
-  }
-  return {
-    player: player ?? null,
-    pieceId: move.pieceId,
-    from: move.from ? { x: move.from.x, y: move.from.y, z: move.from.z } : null,
-    to: move.to ? { x: move.to.x, y: move.to.y, z: move.to.z } : null,
-    capturedPieceId: move.capturedPieceId ?? null,
-  };
 }
 
 function sortScoredMoves(scored) {
@@ -46,7 +40,25 @@ function sortScoredMoves(scored) {
   });
 }
 
-export function pruneScoredCandidates(scoredMoves, options = {}) {
+function moveKey(move) {
+  const to = move?.to ?? { x: "?", y: "?", z: "?" };
+  return String(move?.pieceId ?? "piece") + ":" + to.x + "," + to.y + "," + to.z;
+}
+
+function formatPvStep(move, player) {
+  if (!move) {
+    return null;
+  }
+  return {
+    player: player ?? null,
+    pieceId: move.pieceId,
+    from: move.from ? { x: move.from.x, y: move.from.y, z: move.from.z } : null,
+    to: move.to ? { x: move.to.x, y: move.to.y, z: move.to.z } : null,
+    capturedPieceId: move.capturedPieceId ?? null,
+  };
+}
+
+function pruneScoredCandidates(scoredMoves, options = {}) {
   const limit = Math.max(1, options.limit ?? 96);
   const minPerPiece = Math.max(1, options.minPerPiece ?? 2);
   const scoreWindow = Math.max(0, options.scoreWindow ?? 4.5);
@@ -147,6 +159,34 @@ export function pruneScoredCandidates(scoredMoves, options = {}) {
   return kept;
 }
 
+function reconstructMatchContext(snapshot) {
+  const pieces = (snapshot.pieces ?? []).map((piece) => new Piece({
+    id: piece.id,
+    owner: piece.owner,
+    type: piece.type,
+    coord: piece.coord,
+    alive: piece.alive,
+  }));
+
+  const matchState = new MatchState({
+    pieces,
+    activePlayer: snapshot.activePlayer,
+    eliminatedPlayers: snapshot.eliminatedPlayers ?? [],
+    turnCount: snapshot.turnCount ?? 0,
+    lastMove: snapshot.lastMove ?? null,
+    turnOrder: snapshot.turnOrder ?? null,
+  });
+
+  const occupancyMap = new OccupancyMap();
+  for (const piece of pieces) {
+    if (piece.alive) {
+      occupancyMap.place(piece);
+    }
+  }
+
+  return { matchState, occupancyMap };
+}
+
 function cloneMatchContext(matchState) {
   const pieces = matchState.pieces.map((piece) => new Piece({
     id: piece.id,
@@ -162,7 +202,6 @@ function cloneMatchContext(matchState) {
     eliminatedPlayers: [...matchState.eliminatedPlayers],
     turnCount: matchState.turnCount,
     lastMove: matchState.lastMove,
-    turnOrder: [...(matchState.turnOrder ?? [])],
   });
 
   const occupancyMap = new OccupancyMap();
@@ -226,6 +265,26 @@ function applyMoveToClone(matchState, occupancyMap, move) {
   return true;
 }
 
+function toSnapshot(matchState) {
+  return {
+    activePlayer: matchState.activePlayer,
+    turnCount: matchState.turnCount,
+    lastMove: matchState.lastMove,
+    eliminatedPlayers: [...matchState.eliminatedPlayers],
+    pieces: matchState.pieces.map((piece) => ({
+      id: piece.id,
+      owner: piece.owner,
+      type: piece.type,
+      alive: piece.alive,
+      coord: {
+        x: piece.coord.x,
+        y: piece.coord.y,
+        z: piece.coord.z,
+      },
+    })),
+  };
+}
+
 function getAliveOpponents(matchState, player) {
   const owners = new Set();
   for (const piece of matchState.pieces) {
@@ -280,27 +339,17 @@ function getCachedNodeValue({
   moveLimit,
   compute,
   metrics,
-  searchNodeCache,
 }) {
-  if (!searchNodeCache) {
-    return compute();
-  }
-
-  const piecesKey = matchState.pieces
-    .filter((piece) => piece.alive)
-    .map((piece) => `${piece.id}@${piece.coord.x},${piece.coord.y},${piece.coord.z}`)
-    .sort()
-    .join("|");
-  const orderKey = Array.isArray(matchState.turnOrder) ? matchState.turnOrder.join(",") : "";
-  const nodeKey = `${kind}|${piecesKey}|a:${matchState.activePlayer}|p:${player}|d:${depth}|l:${moveLimit}|t:${matchState.turnCount}|o:${orderKey}`;
-  const cached = searchNodeCache.get(nodeKey);
+  const stateHash = buildMatchStateHash(toSnapshot(matchState));
+  const nodeKey = `${kind}|${stateHash}|p:${player}|d:${depth}|l:${moveLimit}`;
+  const cached = SEARCH_NODE_CACHE.get(nodeKey);
   if (cached !== null) {
     metrics.cacheHits += 1;
     return cached;
   }
 
   const value = compute();
-  searchNodeCache.set(nodeKey, value);
+  SEARCH_NODE_CACHE.set(nodeKey, value);
   return value;
 }
 
@@ -314,7 +363,6 @@ function evaluateStrongestOpponentReply({
   deadlineMs,
   signal,
   depth,
-  searchNodeCache,
 }) {
   return getCachedNodeValue({
     matchState,
@@ -323,7 +371,6 @@ function evaluateStrongestOpponentReply({
     depth,
     moveLimit: opponentMoveLimit,
     metrics,
-    searchNodeCache,
     compute: () => {
       const opponents = getAliveOpponents(matchState, player);
       let strongest = null;
@@ -338,19 +385,24 @@ function evaluateStrongestOpponentReply({
           continue;
         }
 
+        const boardPhase = classifyBoardPhase(matchState);
         const scored = scoreMovesForPlayer({
           matchState,
           occupancyMap,
           player: opponent,
           legalMoves,
           behaviorContext,
-          boardPhase: null,
+          boardPhase,
         }).slice(0, Math.max(1, opponentMoveLimit));
 
         metrics.nodesExpanded += Math.min(scored.length, Math.max(1, opponentMoveLimit));
 
         const candidate = scored[0] ?? null;
-        if (candidate && (!strongest || candidate.score > strongest.score)) {
+        if (!candidate) {
+          continue;
+        }
+
+        if (!strongest || candidate.score > strongest.score) {
           strongest = {
             opponent,
             move: candidate.move,
@@ -374,7 +426,6 @@ function evaluateBestSelfReplyScore({
   deadlineMs,
   signal,
   depth,
-  searchNodeCache,
 }) {
   return getCachedNodeValue({
     matchState,
@@ -383,7 +434,6 @@ function evaluateBestSelfReplyScore({
     depth,
     moveLimit: selfMoveLimit,
     metrics,
-    searchNodeCache,
     compute: () => {
       if (signal?.aborted || nowMs() >= deadlineMs) {
         return null;
@@ -394,13 +444,14 @@ function evaluateBestSelfReplyScore({
         return null;
       }
 
+      const boardPhase = classifyBoardPhase(matchState);
       const scored = scoreMovesForPlayer({
         matchState,
         occupancyMap,
         player,
         legalMoves,
         behaviorContext,
-        boardPhase: null,
+        boardPhase,
       }).slice(0, Math.max(1, selfMoveLimit));
 
       metrics.nodesExpanded += Math.min(scored.length, Math.max(1, selfMoveLimit));
@@ -424,13 +475,11 @@ function evaluateRootMoveWithDepth({
   depth,
   replyWeight,
   recoveryWeight,
-  counterReplyWeight,
   opponentMoveLimit,
   selfMoveLimit,
   metrics,
   deadlineMs,
   signal,
-  searchNodeCache,
 }) {
   if (signal?.aborted || nowMs() >= deadlineMs) {
     return null;
@@ -461,7 +510,6 @@ function evaluateRootMoveWithDepth({
     deadlineMs,
     signal,
     depth,
-    searchNodeCache,
   });
 
   if (strongestReply?.move) {
@@ -486,7 +534,6 @@ function evaluateRootMoveWithDepth({
         deadlineMs,
         signal,
         depth,
-        searchNodeCache,
       });
 
       if (selfReply?.move) {
@@ -496,37 +543,13 @@ function evaluateRootMoveWithDepth({
       if (typeof selfReply?.score === "number" && Number.isFinite(selfReply.score)) {
         score += selfReply.score * recoveryWeight;
       }
-
-      if (depth >= 4 && selfReply?.move) {
-        const selfReplied = applyMoveToClone(cloned.matchState, cloned.occupancyMap, selfReply.move);
-        if (selfReplied) {
-          metrics.nodesExpanded += 1;
-          const counterReply = evaluateStrongestOpponentReply({
-            matchState: cloned.matchState,
-            occupancyMap: cloned.occupancyMap,
-            player: rootPlayer,
-            behaviorContext,
-            opponentMoveLimit,
-            metrics,
-            deadlineMs,
-            signal,
-            depth: depth + 1,
-            searchNodeCache,
-          });
-
-          if (counterReply?.move) {
-            principalVariation.push(formatPvStep(counterReply.move, counterReply.opponent));
-            score -= counterReply.score * counterReplyWeight;
-          }
-        }
-      }
     }
   }
 
   return { score, principalVariation };
 }
 
-export function applyIterativeDeepeningSearch({
+function applyIterativeDeepeningSearchV2({
   dangerRescored,
   candidatePool,
   matchState,
@@ -535,9 +558,10 @@ export function applyIterativeDeepeningSearch({
   budgetMs,
   signal,
   config,
-  searchNodeCache = null,
 }) {
-  const base = Array.isArray(candidatePool) && candidatePool.length > 0 ? candidatePool : dangerRescored;
+  const base = Array.isArray(candidatePool) && candidatePool.length > 0
+    ? candidatePool
+    : dangerRescored;
 
   if (!Array.isArray(base) || base.length === 0) {
     return {
@@ -547,23 +571,17 @@ export function applyIterativeDeepeningSearch({
       cacheHits: 0,
       timedOut: false,
       searchedCandidateCount: 0,
-      principalVariation: [],
-      principalVariationByMove: {},
-      bestMoveKey: null,
     };
   }
 
   const searchConfig = {
     rootCandidateLimit: Math.max(4, config?.rootCandidateLimit ?? 16),
     depth3CandidateLimit: Math.max(2, config?.depth3CandidateLimit ?? 8),
-    depth4CandidateLimit: Math.max(2, config?.depth4CandidateLimit ?? 5),
     opponentMoveLimit: Math.max(4, config?.opponentMoveLimit ?? 14),
     selfMoveLimit: Math.max(4, config?.selfMoveLimit ?? 14),
     replyWeight: config?.replyWeight ?? 0.9,
     recoveryWeight: config?.recoveryWeight ?? 0.65,
-    counterReplyWeight: config?.counterReplyWeight ?? 0.58,
     minDepth3BudgetMs: Math.max(12, config?.minDepth3BudgetMs ?? 45),
-    minDepth4BudgetMs: Math.max(16, config?.minDepth4BudgetMs ?? 80),
     blendFactor: Math.min(1, Math.max(0, config?.blendFactor ?? 0.75)),
   };
 
@@ -602,13 +620,11 @@ export function applyIterativeDeepeningSearch({
       depth: 2,
       replyWeight: searchConfig.replyWeight,
       recoveryWeight: searchConfig.recoveryWeight,
-      counterReplyWeight: searchConfig.counterReplyWeight,
       opponentMoveLimit: searchConfig.opponentMoveLimit,
       selfMoveLimit: searchConfig.selfMoveLimit,
       metrics,
       deadlineMs,
       signal,
-      searchNodeCache,
     });
 
     if (typeof evaluated?.score === "number" && Number.isFinite(evaluated.score)) {
@@ -657,13 +673,11 @@ export function applyIterativeDeepeningSearch({
         depth: 3,
         replyWeight: searchConfig.replyWeight,
         recoveryWeight: searchConfig.recoveryWeight,
-        counterReplyWeight: searchConfig.counterReplyWeight,
         opponentMoveLimit: searchConfig.opponentMoveLimit,
         selfMoveLimit: searchConfig.selfMoveLimit,
         metrics,
         deadlineMs,
         signal,
-        searchNodeCache,
       });
 
       if (typeof evaluated?.score === "number" && Number.isFinite(evaluated.score)) {
@@ -677,55 +691,6 @@ export function applyIterativeDeepeningSearch({
 
     if (!timedOut && depth3Candidates.length > 0) {
       depthReached = 3;
-    }
-
-    if (!timedOut && nowMs() + searchConfig.minDepth4BudgetMs < deadlineMs) {
-      const depth4Candidates = [...depth3Candidates]
-        .sort((a, b) => {
-          const aScore = searchScores.get(moveKey(a.move)) ?? a.score;
-          const bScore = searchScores.get(moveKey(b.move)) ?? b.score;
-          if (aScore !== bScore) {
-            return bScore - aScore;
-          }
-          return moveKey(a.move).localeCompare(moveKey(b.move));
-        })
-        .slice(0, Math.min(searchConfig.depth4CandidateLimit, depth3Candidates.length));
-
-      for (const entry of depth4Candidates) {
-        if (signal?.aborted || nowMs() >= deadlineMs) {
-          timedOut = true;
-          break;
-        }
-
-        const evaluated = evaluateRootMoveWithDepth({
-          rootEntry: entry,
-          rootPlayer: player,
-          matchState,
-          behaviorContext,
-          depth: 4,
-          replyWeight: searchConfig.replyWeight,
-          recoveryWeight: searchConfig.recoveryWeight,
-          counterReplyWeight: searchConfig.counterReplyWeight,
-          opponentMoveLimit: searchConfig.opponentMoveLimit,
-          selfMoveLimit: searchConfig.selfMoveLimit,
-          metrics,
-          deadlineMs,
-          signal,
-          searchNodeCache,
-        });
-
-        if (typeof evaluated?.score === "number" && Number.isFinite(evaluated.score)) {
-          const key = moveKey(entry.move);
-          searchScores.set(key, evaluated.score);
-          if (Array.isArray(evaluated.principalVariation) && evaluated.principalVariation.length > 0) {
-            searchLinesByMoveKey.set(key, evaluated.principalVariation.filter(Boolean));
-          }
-        }
-      }
-
-      if (!timedOut && depth4Candidates.length > 0) {
-        depthReached = 4;
-      }
     }
   }
 
@@ -772,4 +737,185 @@ export function applyIterativeDeepeningSearch({
     bestMoveKey: bestKey,
   };
 }
+
+function computeDecision(payload) {
+  const matchStateSnapshot = payload.matchState ?? {};
+  const legalMoves = Array.isArray(payload.legalMoves) ? payload.legalMoves : [];
+  const player = payload.player ?? matchStateSnapshot.activePlayer;
+  const personaId = typeof payload.personaId === "string" && payload.personaId.trim().length > 0 ? payload.personaId.trim() : "default";
+
+  const behaviorContext = {
+    pieceMoveCountsById: new Map(payload.behaviorContext?.pieceMoveCountsById ?? []),
+    recentMoves: Array.isArray(payload.behaviorContext?.recentMoves) ? payload.behaviorContext.recentMoves : [],
+  };
+
+  const cacheKey = buildDecisionContextHash({
+    matchStateSnapshot,
+    player,
+    legalMoves,
+    behaviorContext: {
+      pieceMoveCountsById: [...behaviorContext.pieceMoveCountsById.entries()],
+      recentMoves: behaviorContext.recentMoves,
+    },
+    aiBudgetMs: payload.aiBudgetMs ?? 400,
+    personaId,
+    dangerConfig: payload.dangerConfig ?? {},
+    candidateConfig: payload.candidateConfig ?? {},
+  });
+
+  const cached = DECISION_CACHE.get(cacheKey);
+  if (cached) {
+    return {
+      ...cached,
+      cacheHit: true,
+      cacheKey,
+      cacheSize: DECISION_CACHE.size,
+    };
+  }
+
+  const { matchState, occupancyMap } = reconstructMatchContext(matchStateSnapshot);
+
+  const boardPhase = classifyBoardPhase(matchState);
+  const threatContext = createTurnThreatContext({
+    matchState,
+    occupancyMap,
+    player,
+  });
+
+  const scored = [];
+  for (const move of legalMoves) {
+    const evaluated = evaluateHeuristicMove({
+      move,
+      matchState,
+      legalMoves,
+      threatContext,
+      behaviorContext,
+      boardPhase,
+    });
+    scored.push({
+      move,
+      score: evaluated.score,
+      breakdown: evaluated.breakdown,
+    });
+  }
+
+  const sortedScored = sortScoredMoves(scored);
+
+  const aiBudgetMs = payload.aiBudgetMs ?? 400;
+  const dangerConfig = payload.dangerConfig ?? {};
+  const dangerBudgetMs = Math.max(
+    dangerConfig.budgetMinMs ?? 120,
+    Math.min(
+      dangerConfig.budgetMaxMs ?? 1800,
+      Math.floor(aiBudgetMs * (dangerConfig.budgetFraction ?? 0.32))
+    )
+  );
+
+  const dangerResult = applyDangerAwareIterativeRescoring({
+    scoredMoves: sortedScored,
+    matchState,
+    player,
+    stageCandidateLimits: dangerConfig.stageCandidateLimits ?? [8, 16, 24],
+    stageOpponentMoveLimits: dangerConfig.stageOpponentMoveLimits ?? [16, 28, 40],
+    dangerWeight: dangerConfig.dangerWeight ?? 0.8,
+    budgetMs: dangerBudgetMs,
+    signal: null,
+  });
+
+  const dangerRescored = sortScoredMoves(dangerResult.scoredMoves ?? []);
+  const candidatePool = pruneSharedScoredCandidates(dangerRescored, {
+    limit: payload.candidateConfig?.poolLimit ?? 96,
+    minPerPiece: payload.candidateConfig?.minPerPiece ?? 2,
+  });
+
+  const searchConfig = payload.searchConfig ?? {};
+  const searchBudgetMs = Math.max(
+    searchConfig.budgetMinMs ?? 60,
+    Math.min(
+      searchConfig.budgetMaxMs ?? 1200,
+      Math.floor(aiBudgetMs * (searchConfig.budgetFraction ?? 0.42))
+    )
+  );
+
+  const searchResult = applySharedIterativeDeepeningSearch({
+    dangerRescored,
+    candidatePool,
+    matchState,
+    player,
+    behaviorContext,
+    budgetMs: searchBudgetMs,
+    signal: null,
+    config: searchConfig,
+    searchNodeCache: SEARCH_NODE_CACHE,
+  });
+
+  const searchedDangerRescored = sortScoredMoves(searchResult.scoredMoves ?? dangerRescored);
+  const searchedCandidatePool = pruneSharedScoredCandidates(searchedDangerRescored, {
+    limit: payload.candidateConfig?.poolLimit ?? 96,
+    minPerPiece: payload.candidateConfig?.minPerPiece ?? 2,
+  });
+
+  const result = {
+    personaId,
+    boardPhase,
+    scored: sortedScored,
+    dangerBudgetMs,
+    dangerRescored: searchedDangerRescored,
+    completedStages: dangerResult.completedStages ?? 0,
+    timedOut: dangerResult.timedOut === true,
+    candidatePool: searchedCandidatePool,
+    searchBudgetMs,
+    searchDepthReached: searchResult.depthReached ?? 0,
+    searchNodesExpanded: searchResult.nodesExpanded ?? 0,
+    searchCacheHits: searchResult.cacheHits ?? 0,
+    searchTimedOut: searchResult.timedOut === true,
+    searchedCandidateCount: searchResult.searchedCandidateCount ?? 0,
+    searchPrincipalVariationBest: Array.isArray(searchResult.principalVariation)
+      ? searchResult.principalVariation
+      : [],
+    searchPrincipalVariationByMove: searchResult.principalVariationByMove && typeof searchResult.principalVariationByMove === "object"
+      ? searchResult.principalVariationByMove
+      : {},
+    searchPrincipalVariationBestMoveKey: typeof searchResult.bestMoveKey === "string" ? searchResult.bestMoveKey : null,
+  };
+
+  DECISION_CACHE.set(cacheKey, result);
+  return {
+    ...result,
+    cacheHit: false,
+    cacheKey,
+    cacheSize: DECISION_CACHE.size,
+  };
+}
+
+self.addEventListener("message", (event) => {
+  const data = event.data ?? {};
+  const id = data.id;
+  try {
+    const result = computeDecision(data.payload ?? {});
+    self.postMessage({ id, result });
+  } catch (error) {
+    self.postMessage({ id, error: error?.message ?? "AI worker failed" });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
