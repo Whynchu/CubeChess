@@ -6,9 +6,10 @@ import { generateStartingPiecesForMode, getStartingAssignmentsForMode, getTurnOr
 export function initializeMatchState(options = {}) {
   const gameModeId = options.gameModeId ?? GameModeId.Chaos8P;
   const normalizedSeatOffset = normalizeSeatOffset(options.seatOffset ?? 0);
-  const pieces = generateStartingPiecesForMode({ gameModeId, seatOffset: normalizedSeatOffset });
-  const startingCorners = getStartingAssignmentsForMode({ gameModeId, seatOffset: normalizedSeatOffset });
-  const turnOrder = [...getTurnOrderForMode({ gameModeId, seatOffset: normalizedSeatOffset })];
+  const activePlayers = Array.isArray(options.activePlayers) ? [...options.activePlayers] : null;
+  const pieces = generateStartingPiecesForMode({ gameModeId, seatOffset: normalizedSeatOffset, activePlayers });
+  const startingCorners = getStartingAssignmentsForMode({ gameModeId, seatOffset: normalizedSeatOffset, activePlayers });
+  const turnOrder = [...getTurnOrderForMode({ gameModeId, seatOffset: normalizedSeatOffset, activePlayers })];
   const occupancyMap = new OccupancyMap();
 
   for (const piece of pieces) {
@@ -33,6 +34,7 @@ export function initializeMatchState(options = {}) {
     matchState,
     occupancyMap,
     gameModeId,
+    activePlayers: turnOrder,
     seatOffset: normalizedSeatOffset,
     startingCorners,
     turnOrder,

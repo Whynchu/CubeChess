@@ -27,7 +27,7 @@ export const POSITION_ROTATION_ORDER = Object.freeze([
   PlayerId.Orange,
 ]);
 
-const DUEL_PLAYERS = Object.freeze([PlayerId.Yellow, PlayerId.Red]);
+const DEFAULT_DUEL_PLAYERS = Object.freeze([PlayerId.Yellow, PlayerId.Red]);
 const DUEL_TOP_WALL_Y = 7;
 const DUEL_BOTTOM_WALL_Y = 0;
 const DUEL_TOP_BACK_RANK_Z = 7;
@@ -72,6 +72,16 @@ function createDuelPiece(owner, type, index, x, y, z, forward) {
   });
 }
 
+function resolveDuelPlayers(activePlayers = null) {
+  if (Array.isArray(activePlayers) && activePlayers.length >= 2) {
+    const [topPlayer, bottomPlayer] = activePlayers;
+    if (TURN_ORDER.includes(topPlayer) && TURN_ORDER.includes(bottomPlayer) && topPlayer !== bottomPlayer) {
+      return [topPlayer, bottomPlayer];
+    }
+  }
+  return [...DEFAULT_DUEL_PLAYERS];
+}
+
 export function normalizeSeatOffset(seatOffset = 0) {
   const cycleLength = POSITION_ROTATION_ORDER.length;
   const normalized = Number.isFinite(seatOffset) ? Math.trunc(seatOffset) : 0;
@@ -84,10 +94,6 @@ function normalizeModeSeatOffset(gameModeId = GameModeId.Chaos8P, seatOffset = 0
   return ((normalized % rotationLength) + rotationLength) % rotationLength;
 }
 
-function getDuelPlayersForSeatOffset(_seatOffset = 0) {
-  return DUEL_PLAYERS;
-}
-
 export function getTurnOrderForSeatOffset(seatOffset = 0) {
   const normalizedOffset = normalizeSeatOffset(seatOffset);
   return Object.freeze(
@@ -95,9 +101,9 @@ export function getTurnOrderForSeatOffset(seatOffset = 0) {
   );
 }
 
-export function getTurnOrderForMode({ gameModeId = GameModeId.Chaos8P, seatOffset = 0 } = {}) {
+export function getTurnOrderForMode({ gameModeId = GameModeId.Chaos8P, seatOffset = 0, activePlayers = null } = {}) {
   if (gameModeId === GameModeId.Duel2P) {
-    return Object.freeze([...getDuelPlayersForSeatOffset(seatOffset)]);
+    return Object.freeze([...resolveDuelPlayers(activePlayers)]);
   }
   return getTurnOrderForSeatOffset(seatOffset);
 }
@@ -127,8 +133,8 @@ export function getStartingCornerAssignments(seatOffset = 0) {
   return assignments;
 }
 
-function getDuelStartingAssignments(seatOffset = 0) {
-  const [topPlayer, bottomPlayer] = getDuelPlayersForSeatOffset(seatOffset);
+function getDuelStartingAssignments(activePlayers = null) {
+  const [topPlayer, bottomPlayer] = resolveDuelPlayers(activePlayers);
   return {
     [topPlayer]: {
       slotOwner: PlayerId.Yellow,
@@ -141,9 +147,9 @@ function getDuelStartingAssignments(seatOffset = 0) {
   };
 }
 
-export function getStartingAssignmentsForMode({ gameModeId = GameModeId.Chaos8P, seatOffset = 0 } = {}) {
+export function getStartingAssignmentsForMode({ gameModeId = GameModeId.Chaos8P, seatOffset = 0, activePlayers = null } = {}) {
   if (gameModeId === GameModeId.Duel2P) {
-    return getDuelStartingAssignments(seatOffset);
+    return getDuelStartingAssignments(activePlayers);
   }
   return getStartingCornerAssignments(seatOffset);
 }
@@ -171,8 +177,8 @@ export function generateStartingPieces({ seatOffset = 0 } = {}) {
   return allPieces;
 }
 
-function generateDuelStartingPieces({ seatOffset = 0 } = {}) {
-  const [topPlayer, bottomPlayer] = getDuelPlayersForSeatOffset(seatOffset);
+function generateDuelStartingPieces(activePlayers = null) {
+  const [topPlayer, bottomPlayer] = resolveDuelPlayers(activePlayers);
   const pieces = [];
 
   for (let x = 0; x < DUEL_BACK_RANK_ORDER.length; x += 1) {
@@ -193,9 +199,9 @@ function generateDuelStartingPieces({ seatOffset = 0 } = {}) {
   return pieces;
 }
 
-export function generateStartingPiecesForMode({ gameModeId = GameModeId.Chaos8P, seatOffset = 0 } = {}) {
+export function generateStartingPiecesForMode({ gameModeId = GameModeId.Chaos8P, seatOffset = 0, activePlayers = null } = {}) {
   if (gameModeId === GameModeId.Duel2P) {
-    return generateDuelStartingPieces({ seatOffset });
+    return generateDuelStartingPieces(activePlayers);
   }
   return generateStartingPieces({ seatOffset });
 }
