@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CubeChess" />
+    <meta name="theme-color" content="#0e1826" />
+    <title>CubeChess Viewer</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="app"></canvas>
+
+    <div class="viewer-chrome">
+      <section class="turn-ribbon" id="turnPanel">
+        <div class="turn-ribbon-block">
+          <span class="turn-ribbon-label">Match</span>
+          <span class="turn-ribbon-value" id="currentTurn">Game 1 | Turn 1 | Yellow</span>
+        </div>
+        <div class="turn-ribbon-block">
+          <span class="turn-ribbon-label">Mode</span>
+          <span class="turn-ribbon-value turn-ribbon-value-muted" id="currentMode">Mode: Chaos 8P</span>
+        </div>
+      </section>
+
+      <aside class="hud is-collapsed" id="hud">
+        <div class="hud-topbar">
+          <div>
+            <p class="eyebrow">CubeChess Viewer</p>
+            <h1>Command Deck</h1>
+          </div>
+          <div class="hud-topbar-right">
+            <span class="topbar-turn" id="turn">Last: -</span>
+            <button id="hudToggleBtn" class="hud-toggle-btn" type="button" aria-expanded="false">Open</button>
+          </div>
+        </div>
+
+        <div class="hud-body" id="hudBody">
+          <section class="hud-section hud-section-highlight">
+            <p class="section-title">Status</p>
+            <div class="status-grid">
+              <div class="status-card">
+                <span class="status-card-label">Playback</span>
+                <span class="status-card-value" id="paused">Running</span>
+              </div>
+              <div class="status-card status-card-wide">
+                <span class="status-card-label">Telemetry</span>
+                <span class="status-card-value status-card-value-small" id="metrics">-</span>
+              </div>
+            </div>
+            <p class="mode-copy" id="modeDescription">8-player voxel strategy tuned for fast AI spectacle.</p>
+            <p class="status" id="status"></p>
+          </section>
+
+          <section class="hud-section">
+            <div class="section-row">
+              <p class="section-title">Controls</p>
+              <div class="control-row">
+                <button id="pauseBtn" type="button">Pause</button>
+                <button id="stepBtn" type="button">Step</button>
+              </div>
+            </div>
+            <div class="control-row control-row-stack">
+              <button id="resetBtn" type="button">Reset Match</button>
+              <button id="exportTraceBtn" type="button">Export Trace</button>
+            </div>
+          </section>
+
+          <section class="hud-section">
+            <p class="section-title">Session</p>
+            <div class="select-grid">
+              <label>
+                <span>Mode</span>
+                <select id="modeSelect">
+                  <option value="chaos_8p" selected>Chaos 8P</option>
+                  <option value="duel_2p">Duel 2P</option>
+                </select>
+              </label>
+              <label>
+                <span>Speed</span>
+                <select id="speedSelect">
+                  <option value="0.25">0.25x</option>
+                  <option value="0.5">0.5x</option>
+                  <option value="1" selected>1x</option>
+                  <option value="2">2x</option>
+                  <option value="4">4x</option>
+                  <option value="8">8x</option>
+                  <option value="16">16x</option>
+                  <option value="32">32x</option>
+                  <option value="64">64x</option>
+                  <option value="128">128x</option>
+                </select>
+              </label>
+              <label>
+                <span>Seed</span>
+                <select id="varietySelect">
+                  <option value="deterministic">Deterministic</option>
+                  <option value="chaotic" selected>Chaotic</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="hud-section">
+            <p class="section-title">Playback Options</p>
+            <label class="toggle-row">
+              <input id="followToggle" type="checkbox" />
+              <span>Follow active piece</span>
+            </label>
+            <label class="toggle-row">
+              <input id="autoReplayToggle" type="checkbox" checked />
+              <span>Auto replay after match</span>
+            </label>
+            <label class="toggle-row">
+              <input id="experimentalLightToggle" type="checkbox" checked />
+              <span>Experimental piece light</span>
+            </label>
+            <label class="toggle-row">
+              <input id="experimentalBranchDepthToggle" type="checkbox" checked />
+              <span>Experimental branch-depth filter</span>
+            </label>
+          </section>
+
+          <section class="hud-section">
+            <p class="section-title">Players</p>
+            <div class="duel-matchup is-hidden" id="duelMatchupPanel"></div>
+            <div class="player-stats" id="playerStatsList"></div>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <div class="winner-overlay" id="winnerOverlay" hidden>
+      <div class="winner-card">
+        <p class="winner-title" id="winnerText">Winner</p>
+        <div class="winner-meter" id="winnerMeter">
+          <div class="winner-meter-fill" id="winnerTimerFill"></div>
+        </div>
+        <p class="winner-timer" id="winnerTimerLabel">Replay in 10s</p>
+      </div>
+    </div>
+
+    <div class="event-flash" id="eventFlash" hidden>
+      <div class="event-flash-burst" aria-hidden="true"></div>
+      <p class="event-flash-text" id="eventFlashText">King taken!</p>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
