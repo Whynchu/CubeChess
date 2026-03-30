@@ -114,14 +114,47 @@ function getPawnForwardVector(piece) {
     : { x: 0, y: -1, z: 0 };
 }
 
+function getPawnPrimaryAxis(forward) {
+  if (forward.x !== 0) return "x";
+  if (forward.y !== 0) return "y";
+  return "z";
+}
+
 function isPawnStartCoord(piece, forward) {
-  if (forward.y > 0) {
-    return piece.coord.y === 1;
+  const axis = getPawnPrimaryAxis(forward);
+  if (axis === "x") {
+    return forward.x > 0 ? piece.coord.x === 1 : piece.coord.x === 6;
   }
-  if (forward.y < 0) {
-    return piece.coord.y === 6;
+  if (axis === "y") {
+    return forward.y > 0 ? piece.coord.y === 1 : piece.coord.y === 6;
   }
-  return false;
+  return forward.z > 0 ? piece.coord.z === 1 : piece.coord.z === 6;
+}
+
+function getPawnCaptureOffsets(forward) {
+  const axis = getPawnPrimaryAxis(forward);
+  if (axis === "x") {
+    return [
+      [forward.x, 1, 0],
+      [forward.x, -1, 0],
+      [forward.x, 0, 1],
+      [forward.x, 0, -1],
+    ];
+  }
+  if (axis === "y") {
+    return [
+      [1, forward.y, 0],
+      [-1, forward.y, 0],
+      [0, forward.y, 1],
+      [0, forward.y, -1],
+    ];
+  }
+  return [
+    [1, 0, forward.z],
+    [-1, 0, forward.z],
+    [0, 1, forward.z],
+    [0, -1, forward.z],
+  ];
 }
 
 function generatePawnMoves(piece, occupancyMap) {
@@ -140,14 +173,7 @@ function generatePawnMoves(piece, occupancyMap) {
     }
   }
 
-  const captureOffsets = [
-    [forward.x + 1, forward.y, forward.z],
-    [forward.x - 1, forward.y, forward.z],
-    [forward.x, forward.y, forward.z + 1],
-    [forward.x, forward.y, forward.z - 1],
-  ];
-
-  for (const [dx, dy, dz] of captureOffsets) {
+  for (const [dx, dy, dz] of getPawnCaptureOffsets(forward)) {
     const destination = maybeCoord(piece.coord, dx, dy, dz, 1);
     if (!destination) {
       continue;

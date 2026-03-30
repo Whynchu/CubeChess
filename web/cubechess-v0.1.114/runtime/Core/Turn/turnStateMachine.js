@@ -155,8 +155,20 @@ export function applyValidatedMove(matchState, occupancyMap, move) {
   }
 
   if (piece.type === PIECE_TYPES.Pawn) {
+    const forwardX = piece.forward?.x ?? 0;
     const forwardY = piece.forward?.y ?? 0;
-    const reachedPromotionRank = forwardY > 0 ? piece.coord.y === 7 : piece.coord.y === 0;
+    const forwardZ = piece.forward?.z ?? 0;
+    const reachedPromotionRank = forwardX > 0
+      ? piece.coord.x === 7
+      : forwardX < 0
+        ? piece.coord.x === 0
+        : forwardY > 0
+          ? piece.coord.y === 7
+          : forwardY < 0
+            ? piece.coord.y === 0
+            : forwardZ > 0
+              ? piece.coord.z === 7
+              : piece.coord.z === 0;
     if (reachedPromotionRank) {
       piece.type = PIECE_TYPES.Queen;
       piece.forward = null;
@@ -421,5 +433,6 @@ export class TurnStateMachine {
     };
   }
 }
+
 
 

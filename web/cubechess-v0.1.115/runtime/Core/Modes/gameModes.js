@@ -15,8 +15,8 @@ const MODE_DEFINITIONS = Object.freeze({
     id: GameModeId.Duel2P,
     label: "Duel 2P",
     activePlayers: Object.freeze(["Yellow", "Red"]),
-    seatRotationLength: 2,
-    formationId: "duel_fullside_v0",
+    seatRotationLength: 1,
+    formationId: "duel_fullside_v1",
   }),
 });
 
