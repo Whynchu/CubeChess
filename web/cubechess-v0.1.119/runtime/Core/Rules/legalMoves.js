@@ -157,19 +157,51 @@ function getPawnCaptureOffsets(forward) {
   ];
 }
 
+function getPawnAdvanceOffsets(forward) {
+  const axis = getPawnPrimaryAxis(forward);
+  if (axis === "x") {
+    return [
+      [forward.x, 0, 0],
+      [forward.x, 1, 0],
+      [forward.x, -1, 0],
+    ];
+  }
+  if (axis === "y") {
+    return [
+      [0, forward.y, 0],
+      [0, forward.y, 1],
+      [0, forward.y, -1],
+    ];
+  }
+  return [
+    [0, 0, forward.z],
+    [0, 1, forward.z],
+    [0, -1, forward.z],
+  ];
+}
+
 function generatePawnMoves(piece, occupancyMap) {
   const moves = [];
   const forward = getPawnForwardVector(piece);
-  const oneForward = maybeCoord(piece.coord, forward.x, forward.y, forward.z, 1);
+  const advanceOffsets = getPawnAdvanceOffsets(forward);
 
-  if (oneForward && !occupancyMap.tryGetPieceAt(oneForward)) {
-    moves.push(buildMove(piece, oneForward));
+  for (let index = 0; index < advanceOffsets.length; index += 1) {
+    const [dx, dy, dz] = advanceOffsets[index];
+    const destination = maybeCoord(piece.coord, dx, dy, dz, 1);
+    if (!destination || occupancyMap.tryGetPieceAt(destination)) {
+      continue;
+    }
 
-    if (isPawnStartCoord(piece, forward)) {
-      const twoForward = maybeCoord(piece.coord, forward.x, forward.y, forward.z, 2);
-      if (twoForward && !occupancyMap.tryGetPieceAt(twoForward)) {
-        moves.push(buildMove(piece, twoForward));
-      }
+    moves.push(buildMove(piece, destination));
+
+    const isStraightAdvance = index === 0;
+    if (!isStraightAdvance || !isPawnStartCoord(piece, forward)) {
+      continue;
+    }
+
+    const twoForward = maybeCoord(piece.coord, dx, dy, dz, 2);
+    if (twoForward && !occupancyMap.tryGetPieceAt(twoForward)) {
+      moves.push(buildMove(piece, twoForward));
     }
   }
 
@@ -221,3 +253,4 @@ export function getLegalMoves(matchState, occupancyMap, pieceId) {
 
   return finalizeMoves(rawMoves);
 }
+
