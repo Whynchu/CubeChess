@@ -31,8 +31,10 @@ const DUEL_PLAYERS = Object.freeze([PlayerId.Yellow, PlayerId.Red]);
 const DUEL_TOP_WALL_Y = 7;
 const DUEL_BOTTOM_WALL_Y = 0;
 const DUEL_TOP_BACK_RANK_Z = 7;
+const DUEL_TOP_PAWN_RANK_Y = 6;
 const DUEL_TOP_PAWN_RANK_Z = 6;
 const DUEL_BOTTOM_BACK_RANK_Z = 0;
+const DUEL_BOTTOM_PAWN_RANK_Y = 1;
 const DUEL_BOTTOM_PAWN_RANK_Z = 1;
 const DUEL_BACK_RANK_ORDER = Object.freeze([
   PIECE_TYPES.Rook,
@@ -184,8 +186,8 @@ function generateDuelStartingPieces({ seatOffset = 0 } = {}) {
   }
 
   for (let x = 0; x < 8; x += 1) {
-    pieces.push(createDuelPiece(topPlayer, PIECE_TYPES.Pawn, x, x, DUEL_TOP_WALL_Y, DUEL_TOP_PAWN_RANK_Z, { x: 0, y: 0, z: -1 }));
-    pieces.push(createDuelPiece(bottomPlayer, PIECE_TYPES.Pawn, x, x, DUEL_BOTTOM_WALL_Y, DUEL_BOTTOM_PAWN_RANK_Z, { x: 0, y: 0, z: 1 }));
+    pieces.push(createDuelPiece(topPlayer, PIECE_TYPES.Pawn, x, x, DUEL_TOP_PAWN_RANK_Y, DUEL_TOP_PAWN_RANK_Z, { x: 0, y: 0, z: -1 }));
+    pieces.push(createDuelPiece(bottomPlayer, PIECE_TYPES.Pawn, x, x, DUEL_BOTTOM_PAWN_RANK_Y, DUEL_BOTTOM_PAWN_RANK_Z, { x: 0, y: 0, z: 1 }));
   }
 
   return pieces;
