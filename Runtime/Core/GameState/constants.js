@@ -17,6 +17,7 @@ export const PIECE_TYPES = Object.freeze({
   Rook: "Rook",
   Bishop: "Bishop",
   Knight: "Knight",
+  Pawn: "Pawn",
 });
 
 export const TURN_ORDER = Object.freeze([

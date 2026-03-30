@@ -209,6 +209,10 @@ body {
   grid-template-columns: 1fr;
 }
 
+.controls.controls-triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .controls button,
 .controls select {
   min-height: 38px;
@@ -432,4 +436,5 @@ body {
     transform: scale(1.08);
   }
 }
+
 

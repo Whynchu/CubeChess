@@ -5,6 +5,7 @@ const NON_KING_MATERIAL_VALUE = Object.freeze({
   [PIECE_TYPES.Rook]: 5,
   [PIECE_TYPES.Bishop]: 3,
   [PIECE_TYPES.Knight]: 3,
+  [PIECE_TYPES.Pawn]: 1,
 });
 
 export const BoardPhase = Object.freeze({

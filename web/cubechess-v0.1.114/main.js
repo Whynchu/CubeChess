@@ -3,6 +3,7 @@ import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.166.1/exampl
 import { FBXLoader } from "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/loaders/FBXLoader.js";
 
 import { initializeMatchState } from "./runtime/Core/GameState/initializeMatchState.js";
+import { GameModeId, getGameModeDefinition } from "./runtime/Core/Modes/gameModes.js";
 import { TURN_ORDER, PIECE_TYPES } from "./runtime/Core/GameState/constants.js";
 import { TurnPhase, TurnStateMachine } from "./runtime/Core/Turn/index.js";
 import { presetAllAI } from "./runtime/Core/Seats/index.js";
@@ -16,6 +17,7 @@ const AI_BUDGET_MAX_MS = 10000;
 const statusEl = document.getElementById("status");
 const turnEl = document.getElementById("turn");
 const currentTurnEl = document.getElementById("currentTurn");
+const currentModeEl = document.getElementById("currentMode");
 const pausedEl = document.getElementById("paused");
 const pauseBtn = document.getElementById("pauseBtn");
 const stepBtn = document.getElementById("stepBtn");
@@ -24,6 +26,7 @@ const followToggle = document.getElementById("followToggle");
 const resetBtn = document.getElementById("resetBtn");
 const exportTraceBtn = document.getElementById("exportTraceBtn");
 const metricsEl = document.getElementById("metrics");
+const modeSelect = document.getElementById("modeSelect");
 const varietySelect = document.getElementById("varietySelect");
 const hudEl = document.getElementById("hud");
 const hudToggleBtn = document.getElementById("hudToggleBtn");
@@ -56,6 +59,12 @@ function setTurnLabel(message) {
 function setCurrentTurnLabel(message) {
   if (currentTurnEl) {
     currentTurnEl.textContent = message;
+  }
+}
+
+function setCurrentModeLabel(message) {
+  if (currentModeEl) {
+    currentModeEl.textContent = message;
   }
 }
 
@@ -432,7 +441,14 @@ const PERSONA_LABEL = Object.freeze({
   pink_trickster: "Trickster",
 });
 
+const AVAILABLE_MATCH_PERSONA_IDS = Object.freeze(Object.keys(PERSONA_LABEL).filter((id) => id !== "default"));
+
 function getPersonaProfileForPlayer(player) {
+  const overrideId = currentPersonaByPlayer.get(player) ?? null;
+  if (typeof overrideId === "string" && overrideId.trim().length > 0) {
+    return { id: overrideId.trim() };
+  }
+
   const profile = AI_PERSONA_REGISTRY[player] ?? DEFAULT_AI_PERSONA;
   return {
     id: typeof profile.id === "string" && profile.id.trim().length > 0 ? profile.id.trim() : "default",
@@ -628,7 +644,8 @@ function updatePlayerStatsPanel() {
     return;
   }
 
-  const rows = TURN_ORDER.map((player) => {
+  const activePlayers = getGameModeDefinition(currentGameModeId).activePlayers ?? TURN_ORDER;
+  const rows = activePlayers.map((player) => {
     const colorClass = String(player ?? "").toLowerCase();
     const name = getPlayerDisplayName(player);
     const persona = getPersonaLabelForPlayer(player);
@@ -668,6 +685,38 @@ function getPersonaTuning(personaId) {
   return AI_PERSONA_TUNING[personaId] ?? AI_PERSONA_TUNING.default;
 }
 
+function sampleDuelPersonaPair() {
+  const pool = [...AVAILABLE_MATCH_PERSONA_IDS];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const swapIndex = Math.floor(Math.random() * (i + 1));
+    const next = pool[i];
+    pool[i] = pool[swapIndex];
+    pool[swapIndex] = next;
+  }
+  return [pool[0] ?? "default", pool[1] ?? pool[0] ?? "default"];
+}
+
+function refreshMatchPersonaAssignments() {
+  currentPersonaByPlayer.clear();
+
+  if (currentGameModeId === GameModeId.Duel2P) {
+    const duelPlayers = getGameModeDefinition(currentGameModeId).activePlayers ?? [];
+    const [leftPersona, rightPersona] = sampleDuelPersonaPair();
+    if (duelPlayers[0]) {
+      currentPersonaByPlayer.set(duelPlayers[0], leftPersona);
+    }
+    if (duelPlayers[1]) {
+      currentPersonaByPlayer.set(duelPlayers[1], rightPersona);
+    }
+    return;
+  }
+
+  for (const player of TURN_ORDER) {
+    const personaId = AI_PERSONA_REGISTRY[player]?.id ?? DEFAULT_AI_PERSONA.id;
+    currentPersonaByPlayer.set(player, personaId);
+  }
+}
+
 function mergeConfig(baseConfig, overrideConfig) {
   return {
     ...(baseConfig ?? {}),
@@ -680,6 +729,8 @@ const VarietyMode = Object.freeze({
 });
 
 let varietyMode = varietySelect?.value ?? VarietyMode.Chaotic;
+let currentGameModeId = modeSelect?.value === GameModeId.Duel2P ? GameModeId.Duel2P : GameModeId.Chaos8P;
+const currentPersonaByPlayer = new Map();
 let followPieceId = null;
 let varietySeed = 1;
 let aiWorker = null;
@@ -1776,6 +1827,8 @@ function getPieceSortRank(pieceType) {
       return 3;
     case PIECE_TYPES.Knight:
       return 4;
+    case PIECE_TYPES.Pawn:
+      return 5;
     default:
       return 9;
   }
@@ -2826,6 +2879,7 @@ function rebuildPieceVisuals() {
 
 function resetMatch({ resume = true } = {}) {
   archiveCurrentGameTraces(turnMachine?.winner ?? null);
+  refreshMatchPersonaAssignments();
   gameCounter += 1;
   clearTurnTimer();
   clearDecisionOverlay();
@@ -2843,8 +2897,9 @@ function resetMatch({ resume = true } = {}) {
   aiRecentMoves = [];
   clearAIDecisionTraces();
 
-  currentSeatOffset = (gameCounter - 1) % TURN_ORDER.length;
-  const initial = initializeMatchState({ seatOffset: currentSeatOffset });
+    const gameMode = getGameModeDefinition(currentGameModeId);
+  currentSeatOffset = (gameCounter - 1) % Math.max(1, gameMode.seatRotationLength ?? TURN_ORDER.length);
+  const initial = initializeMatchState({ gameModeId: currentGameModeId, seatOffset: currentSeatOffset });
   matchState = initial.matchState;
   occupancyMap = initial.occupancyMap;
   currentStartingCorners = cloneStartingCorners(initial.startingCorners);
@@ -3642,6 +3697,9 @@ function formatMoveHudText(move) {
   return `${pieceType} -> (${target.x},${target.y},${target.z})`;
 }
 function updateTurnHud() {
+  const modeLabel = getGameModeDefinition(currentGameModeId).label ?? "Mode";
+  setCurrentModeLabel(`Mode: ${modeLabel}`);
+
   if (turnMachine.phase === TurnPhase.MatchEnded) {
     setActiveTurnTint(null);
     setCurrentTurnLabel(`Game ${gameCounter} • Winner: ${turnMachine.winner ? getPlayerDisplayName(turnMachine.winner) : "None"}`);
@@ -3820,6 +3878,14 @@ speedSelect?.addEventListener("change", () => {
   }
 });
 
+modeSelect?.addEventListener("change", () => {
+  currentGameModeId = modeSelect.value === GameModeId.Duel2P ? GameModeId.Duel2P : GameModeId.Chaos8P;
+  updatePlayerStatsPanel();
+  updateTurnHud();
+  setStatus(`Mode set to ${getGameModeDefinition(currentGameModeId).label}.`);
+  resetMatch({ resume: true });
+});
+
 varietySelect?.addEventListener("change", () => {
   varietyMode = varietySelect.value === VarietyMode.Deterministic
     ? VarietyMode.Deterministic
@@ -3923,6 +3989,12 @@ if (followToggle) {
   });
 }
 
+refreshMatchPersonaAssignments();
+
+if (modeSelect) {
+  modeSelect.value = currentGameModeId;
+}
+
 if (varietySelect) {
   varietySelect.value = varietyMode;
 }
@@ -3940,6 +4012,13 @@ primePieceModels();
 updatePlayerStatsPanel();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
+
+
+
+
+
+
 
 
 

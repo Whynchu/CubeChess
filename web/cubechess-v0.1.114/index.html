@@ -23,6 +23,7 @@
     <div class="turn-panel" id="turnPanel">
       <span class="turn-panel-label">Current Turn</span>
       <span class="turn-panel-value" id="currentTurn">Game 1 • Turn 1 • Yellow</span>
+      <span class="turn-panel-label" id="currentMode">Mode: Chaos 8P</span>
     </div>
 
     <div class="hud is-collapsed" id="hud">
@@ -53,7 +54,14 @@
           <button id="exportTraceBtn" type="button">📥 Export Trace</button>
         </div>
 
-        <div class="controls">
+        <div class="controls controls-triple">
+          <label>
+            ⚔️ Mode
+            <select id="modeSelect">
+              <option value="chaos_8p" selected>Chaos 8P</option>
+              <option value="duel_2p">Duel 2P</option>
+            </select>
+          </label>
           <label>
             ⚡ Speed
             <select id="speedSelect">
@@ -124,6 +132,7 @@
     <script type="module" src="./main.js"></script>
   </body>
 </html>
+
 
 
 

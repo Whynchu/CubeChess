@@ -25,6 +25,7 @@ export const PIECE_VALUE = Object.freeze({
   [PIECE_TYPES.Rook]: 5,
   [PIECE_TYPES.Bishop]: 3,
   [PIECE_TYPES.Knight]: 3,
+  [PIECE_TYPES.Pawn]: 1,
 });
 
 const PHASE_WEIGHT_MULTIPLIERS = Object.freeze({
@@ -87,6 +88,7 @@ const MOBILITY_PIECE_SCALE = Object.freeze({
   [PIECE_TYPES.Rook]: 1.02,
   [PIECE_TYPES.Bishop]: 1.12,
   [PIECE_TYPES.Knight]: 1.14,
+  [PIECE_TYPES.Pawn]: 0.86,
 });
 
 const DEVELOPMENT_PIECE_SCALE = Object.freeze({
@@ -95,6 +97,7 @@ const DEVELOPMENT_PIECE_SCALE = Object.freeze({
   [PIECE_TYPES.Rook]: 1.05,
   [PIECE_TYPES.Bishop]: 1.18,
   [PIECE_TYPES.Knight]: 1.14,
+  [PIECE_TYPES.Pawn]: 0.94,
 });
 
 const PRESSURE_RISK_SCALE = Object.freeze({
@@ -103,6 +106,7 @@ const PRESSURE_RISK_SCALE = Object.freeze({
   [PIECE_TYPES.Rook]: 1.02,
   [PIECE_TYPES.Bishop]: 0.96,
   [PIECE_TYPES.Knight]: 0.94,
+  [PIECE_TYPES.Pawn]: 0.78,
 });
 
 const SUPPORT_REWARD_SCALE = Object.freeze({
@@ -111,6 +115,7 @@ const SUPPORT_REWARD_SCALE = Object.freeze({
   [PIECE_TYPES.Rook]: 0.72,
   [PIECE_TYPES.Bishop]: 0.8,
   [PIECE_TYPES.Knight]: 0.76,
+  [PIECE_TYPES.Pawn]: 0.52,
 });
 
 const OPENING_QUEEN_UNDEVELOPED_TAX = 0.28;
@@ -361,7 +366,7 @@ export function evaluateHeuristicMove({
   const recentTypeHistogram = buildRecentTypeHistogram(recentWindowMoves);
   const recentSameType = recentTypeHistogram.get(movingType) ?? 0;
 
-  if (movingType !== PIECE_TYPES.King) {
+  if (movingType !== PIECE_TYPES.King && movingType !== PIECE_TYPES.Pawn) {
     if (recentSameType >= 3) {
       const sameTypePenalty = Math.min(4, recentSameType - 2) * phaseWeights.sameTypeRepeat;
       breakdown.diversity -= sameTypePenalty;
@@ -402,3 +407,5 @@ export function evaluateHeuristicMove({
 
   return { score, breakdown, boardPhase: resolvedBoardPhase };
 }
+
+

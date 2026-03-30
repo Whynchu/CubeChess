@@ -12,8 +12,8 @@ export class MatchState {
     if (!Array.isArray(pieces)) {
       throw new Error("MatchState pieces must be an array");
     }
-    if (!Array.isArray(turnOrder) || turnOrder.length !== TURN_ORDER.length) {
-      throw new Error("MatchState turnOrder must be a full player order array");
+    if (!Array.isArray(turnOrder) || turnOrder.length < 2) {
+      throw new Error("MatchState turnOrder must contain at least two players");
     }
     if (!turnOrder.includes(activePlayer)) {
       throw new Error(`Invalid active player: ${activePlayer}`);

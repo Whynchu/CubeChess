@@ -101,6 +101,67 @@ function generateKingMoves(piece, occupancyMap) {
   return moves;
 }
 
+function getPawnForwardVector(piece) {
+  const x = Number(piece?.forward?.x ?? 0);
+  const y = Number(piece?.forward?.y ?? 0);
+  const z = Number(piece?.forward?.z ?? 0);
+  if (x !== 0 || y !== 0 || z !== 0) {
+    return { x, y, z };
+  }
+
+  return piece?.coord?.y <= 3
+    ? { x: 0, y: 1, z: 0 }
+    : { x: 0, y: -1, z: 0 };
+}
+
+function isPawnStartCoord(piece, forward) {
+  if (forward.y > 0) {
+    return piece.coord.y === 1;
+  }
+  if (forward.y < 0) {
+    return piece.coord.y === 6;
+  }
+  return false;
+}
+
+function generatePawnMoves(piece, occupancyMap) {
+  const moves = [];
+  const forward = getPawnForwardVector(piece);
+  const oneForward = maybeCoord(piece.coord, forward.x, forward.y, forward.z, 1);
+
+  if (oneForward && !occupancyMap.tryGetPieceAt(oneForward)) {
+    moves.push(buildMove(piece, oneForward));
+
+    if (isPawnStartCoord(piece, forward)) {
+      const twoForward = maybeCoord(piece.coord, forward.x, forward.y, forward.z, 2);
+      if (twoForward && !occupancyMap.tryGetPieceAt(twoForward)) {
+        moves.push(buildMove(piece, twoForward));
+      }
+    }
+  }
+
+  const captureOffsets = [
+    [forward.x + 1, forward.y, forward.z],
+    [forward.x - 1, forward.y, forward.z],
+    [forward.x, forward.y, forward.z + 1],
+    [forward.x, forward.y, forward.z - 1],
+  ];
+
+  for (const [dx, dy, dz] of captureOffsets) {
+    const destination = maybeCoord(piece.coord, dx, dy, dz, 1);
+    if (!destination) {
+      continue;
+    }
+
+    const occupant = occupancyMap.tryGetPieceAt(destination);
+    if (occupant && isEnemy(piece, occupant)) {
+      moves.push(buildMove(piece, destination, occupant));
+    }
+  }
+
+  return moves;
+}
+
 export function getPseudoLegalMoves(matchState, occupancyMap, pieceId) {
   return getLegalMoves(matchState, occupancyMap, pieceId).map((move) => move.to);
 }
@@ -124,6 +185,9 @@ export function getLegalMoves(matchState, occupancyMap, pieceId) {
       break;
     case PIECE_TYPES.King:
       rawMoves = generateKingMoves(piece, occupancyMap);
+      break;
+    case PIECE_TYPES.Pawn:
+      rawMoves = generatePawnMoves(piece, occupancyMap);
       break;
     default:
       throw new Error(`Unsupported piece type: ${piece.type}`);

@@ -154,6 +154,15 @@ export function applyValidatedMove(matchState, occupancyMap, move) {
     throw new Error(`Destination occupied while applying move for ${move.pieceId}`);
   }
 
+  if (piece.type === PIECE_TYPES.Pawn) {
+    const forwardY = piece.forward?.y ?? 0;
+    const reachedPromotionRank = forwardY > 0 ? piece.coord.y === 7 : piece.coord.y === 0;
+    if (reachedPromotionRank) {
+      piece.type = PIECE_TYPES.Queen;
+      piece.forward = null;
+    }
+  }
+
   let eliminatedPlayer = null;
   if (capturedPiece && capturedPiece.type === PIECE_TYPES.King) {
     eliminatedPlayer = capturedPiece.owner;
@@ -412,3 +421,5 @@ export class TurnStateMachine {
     };
   }
 }
+
+
