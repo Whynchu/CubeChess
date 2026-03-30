@@ -40,6 +40,7 @@ const winnerTimerLabelEl = document.getElementById("winnerTimerLabel");
 const eventFlashEl = document.getElementById("eventFlash");
 const eventFlashTextEl = document.getElementById("eventFlashText");
 const playerStatsListEl = document.getElementById("playerStatsList");
+const duelMatchupPanelEl = document.getElementById("duelMatchupPanel");
 
 let experimentalPieceLightEnabled = experimentalLightToggle?.checked === true;
 let experimentalBranchDepthEnabled = experimentalBranchDepthToggle?.checked === true;
@@ -66,6 +67,11 @@ function setCurrentModeLabel(message) {
   if (currentModeEl) {
     currentModeEl.textContent = message;
   }
+}
+
+function syncCurrentGameModeFromSelect() {
+  currentGameModeId = modeSelect?.value === GameModeId.Duel2P ? GameModeId.Duel2P : GameModeId.Chaos8P;
+  return currentGameModeId;
 }
 
 function getPlayerDisplayName(player) {
@@ -628,6 +634,7 @@ function getPersonaLabelForPlayer(player) {
 }
 
 const sessionWinsByPlayer = new Map(TURN_ORDER.map((player) => [player, 0]));
+const duelSessionStatsByMatchup = new Map();
 let sessionCompletedGames = 0;
 let lastRecordedWinnerGame = 0;
 
@@ -637,6 +644,74 @@ function formatWinRatePct(player) {
     return "0.0%";
   }
   return `${((wins / sessionCompletedGames) * 100).toFixed(1)}%`;
+}
+
+function getCurrentDuelMatchup() {
+  if (currentGameModeId !== GameModeId.Duel2P) {
+    return null;
+  }
+
+  const duelPlayers = getGameModeDefinition(currentGameModeId).activePlayers ?? [];
+  if (duelPlayers.length < 2) {
+    return null;
+  }
+
+  const [leftPlayer, rightPlayer] = duelPlayers;
+  const leftPersona = getPersonaProfileForPlayer(leftPlayer).id;
+  const rightPersona = getPersonaProfileForPlayer(rightPlayer).id;
+  return {
+    leftPlayer,
+    rightPlayer,
+    leftPersona,
+    rightPersona,
+    key: `${leftPersona}__vs__${rightPersona}`,
+  };
+}
+
+function getOrCreateDuelSessionRecord(matchup) {
+  if (!matchup) {
+    return null;
+  }
+
+  let record = duelSessionStatsByMatchup.get(matchup.key);
+  if (!record) {
+    record = {
+      games: 0,
+      winsByPersona: new Map([
+        [matchup.leftPersona, 0],
+        [matchup.rightPersona, 0],
+      ]),
+    };
+    duelSessionStatsByMatchup.set(matchup.key, record);
+  }
+  return record;
+}
+
+function updateDuelMatchupPanel() {
+  if (!duelMatchupPanelEl) {
+    return;
+  }
+
+  const matchup = getCurrentDuelMatchup();
+  if (!matchup) {
+    duelMatchupPanelEl.classList.add("is-hidden");
+    duelMatchupPanelEl.innerHTML = "";
+    return;
+  }
+
+  const record = getOrCreateDuelSessionRecord(matchup);
+  const leftLabel = PERSONA_LABEL[matchup.leftPersona] ?? matchup.leftPersona.replaceAll("_", " ");
+  const rightLabel = PERSONA_LABEL[matchup.rightPersona] ?? matchup.rightPersona.replaceAll("_", " ");
+  const leftWins = record?.winsByPersona?.get(matchup.leftPersona) ?? 0;
+  const rightWins = record?.winsByPersona?.get(matchup.rightPersona) ?? 0;
+  const games = record?.games ?? 0;
+
+  duelMatchupPanelEl.classList.remove("is-hidden");
+  duelMatchupPanelEl.innerHTML = `
+    <span class="duel-matchup-label">Duel Matchup</span>
+    <span class="duel-matchup-title">${getPlayerDisplayName(matchup.leftPlayer)} ${leftLabel} vs ${getPlayerDisplayName(matchup.rightPlayer)} ${rightLabel}</span>
+    <span class="duel-matchup-record">Session record ${leftWins}-${rightWins}${games > 0 ? ` over ${games} game${games === 1 ? "" : "s"}` : " • no finished games yet"}</span>
+  `;
 }
 
 function updatePlayerStatsPanel() {
@@ -678,7 +753,17 @@ function recordWinnerStats(winner) {
   lastRecordedWinnerGame = gameCounter;
   sessionCompletedGames += 1;
   sessionWinsByPlayer.set(winner, (sessionWinsByPlayer.get(winner) ?? 0) + 1);
+
+  const duelMatchup = getCurrentDuelMatchup();
+  if (duelMatchup) {
+    const duelRecord = getOrCreateDuelSessionRecord(duelMatchup);
+    duelRecord.games += 1;
+    const winnerPersonaId = getPersonaProfileForPlayer(winner).id;
+    duelRecord.winsByPersona.set(winnerPersonaId, (duelRecord.winsByPersona.get(winnerPersonaId) ?? 0) + 1);
+  }
+
   updatePlayerStatsPanel();
+  updateDuelMatchupPanel();
 }
 
 function getPersonaTuning(personaId) {
@@ -2878,8 +2963,11 @@ function rebuildPieceVisuals() {
 }
 
 function resetMatch({ resume = true } = {}) {
+  syncCurrentGameModeFromSelect();
   archiveCurrentGameTraces(turnMachine?.winner ?? null);
   refreshMatchPersonaAssignments();
+  updatePlayerStatsPanel();
+  updateDuelMatchupPanel();
   gameCounter += 1;
   clearTurnTimer();
   clearDecisionOverlay();
@@ -3879,7 +3967,7 @@ speedSelect?.addEventListener("change", () => {
 });
 
 modeSelect?.addEventListener("change", () => {
-  currentGameModeId = modeSelect.value === GameModeId.Duel2P ? GameModeId.Duel2P : GameModeId.Chaos8P;
+  syncCurrentGameModeFromSelect();
   updatePlayerStatsPanel();
   updateTurnHud();
   setStatus(`Mode set to ${getGameModeDefinition(currentGameModeId).label}.`);
@@ -4010,8 +4098,13 @@ applyHudCollapsed(window.innerWidth < 900);
 recenterCameraTarget();
 primePieceModels();
 updatePlayerStatsPanel();
+updateDuelMatchupPanel();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
+
+
+
 
 
 
