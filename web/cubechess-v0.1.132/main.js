@@ -9,7 +9,7 @@ import { TurnPhase, TurnStateMachine } from "./runtime/Core/Turn/index.js";
 import { presetAllAI } from "./runtime/Core/Seats/index.js";
 import { applyDangerAwareIterativeRescoring, classifyBoardPhase, createTurnThreatContext, evaluateHeuristicMove, filterImmediateKingCaptureUnsafeCandidates } from "./runtime/Core/AI/index.js";
 
-const VERSION = "0.1.131";
+const VERSION = "0.1.132";
 const BOARD_SIZE = 8;
 const AI_BUDGET_MS = 400;
 const AI_BUDGET_MAX_MS = 10000;
@@ -4246,6 +4246,7 @@ ensureAIWorker();
 refreshModeHud();
 resetMatch({ resume: true });
 requestAnimationFrame(animate);
+
 
 
 
