@@ -1,0 +1,638 @@
+import { Coord3 } from "../GameState/coord3.js";
+import { PIECE_TYPES, TURN_ORDER } from "../GameState/constants.js";
+import { getLegalMoves, isPlayerKingUnderThreat } from "../Rules/legalMoves.js";
+import { runAITurn } from "../AI/aiTurnRunner.js";
+import { buildDuelRepetitionStateKey } from "../AI/stateHash.js";
+import { ControllerType, getControllerTypeForPlayer } from "../Seats/seatConfig.js";
+import { GameModeId } from "../Modes/gameModes.js";
+
+export const TurnPhase = Object.freeze({
+  Idle: "Idle",
+  AwaitingHumanMove: "AwaitingHumanMove",
+  AwaitingAIMove: "AwaitingAIMove",
+  ResolvingMove: "ResolvingMove",
+  MatchEnded: "MatchEnded",
+});
+
+const ALLOWED_TRANSITIONS = Object.freeze({
+  [TurnPhase.Idle]: new Set([TurnPhase.AwaitingHumanMove, TurnPhase.AwaitingAIMove, TurnPhase.ResolvingMove, TurnPhase.MatchEnded]),
+  [TurnPhase.AwaitingHumanMove]: new Set([TurnPhase.ResolvingMove, TurnPhase.MatchEnded]),
+  [TurnPhase.AwaitingAIMove]: new Set([TurnPhase.ResolvingMove, TurnPhase.MatchEnded]),
+  [TurnPhase.ResolvingMove]: new Set([TurnPhase.Idle, TurnPhase.MatchEnded]),
+  [TurnPhase.MatchEnded]: new Set([]),
+});
+
+function getSeatTurnOrder(matchState) {
+  return Array.isArray(matchState?.turnOrder) && matchState.turnOrder.length > 0 ? matchState.turnOrder : TURN_ORDER;
+}
+
+function isDuelMatch(matchState) {
+  return matchState?.gameModeId === GameModeId.Duel2P;
+}
+
+const DUEL_REPETITION_DRAW_COUNT = 3;
+const DUEL_NO_PROGRESS_HALFMOVE_LIMIT = 100;
+
+function sortMovesGlobalDeterministic(moves) {
+  return moves.sort((a, b) => {
+    const pieceCompare = a.pieceId.localeCompare(b.pieceId);
+    if (pieceCompare !== 0) {
+      return pieceCompare;
+    }
+    if (a.to.x !== b.to.x) return a.to.x - b.to.x;
+    if (a.to.y !== b.to.y) return a.to.y - b.to.y;
+    if (a.to.z !== b.to.z) return a.to.z - b.to.z;
+    if (a.isCapture !== b.isCapture) return a.isCapture ? -1 : 1;
+    return 0;
+  });
+}
+
+function findAlivePieceById(matchState, pieceId) {
+  return matchState.pieces.find((piece) => piece.id === pieceId && piece.alive) ?? null;
+}
+
+function isSameMove(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+
+  return a.pieceId === b.pieceId
+    && a.to?.x === b.to?.x
+    && a.to?.y === b.to?.y
+    && a.to?.z === b.to?.z;
+}
+
+function findLegalMoveMatch(legalMoves, candidateMove) {
+  if (!candidateMove) {
+    return null;
+  }
+
+  return legalMoves.find((move) => isSameMove(move, candidateMove)) ?? null;
+}
+
+export function collectLegalMovesForPlayer(matchState, occupancyMap, player) {
+  const playerPieces = matchState.pieces
+    .filter((piece) => piece.alive && piece.owner === player)
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  const allMoves = [];
+  for (const piece of playerPieces) {
+    const legalMoves = getLegalMoves(matchState, occupancyMap, piece.id);
+    allMoves.push(...legalMoves);
+  }
+
+  return sortMovesGlobalDeterministic(allMoves);
+}
+
+function eliminatePlayer(matchState, occupancyMap, player) {
+  if (matchState.eliminatedPlayers.has(player)) {
+    return;
+  }
+
+  matchState.eliminatedPlayers.add(player);
+  for (const piece of matchState.pieces) {
+    if (piece.owner !== player || !piece.alive) {
+      continue;
+    }
+
+    piece.alive = false;
+    occupancyMap.remove(piece.id);
+  }
+}
+
+export function synchronizeEliminations(matchState, occupancyMap) {
+  for (const player of getSeatTurnOrder(matchState)) {
+    const kingAlive = matchState.pieces.some((piece) => piece.alive && piece.owner === player && piece.type === PIECE_TYPES.King);
+    if (!kingAlive) {
+      eliminatePlayer(matchState, occupancyMap, player);
+    }
+  }
+}
+
+export function getRemainingPlayers(matchState) {
+  return getSeatTurnOrder(matchState).filter((player) => !matchState.eliminatedPlayers.has(player));
+}
+
+export function getWinner(matchState) {
+  const remainingPlayers = getRemainingPlayers(matchState);
+  if (remainingPlayers.length === 1) {
+    return remainingPlayers[0];
+  }
+  return null;
+}
+
+export function getNextActivePlayer(matchState, currentPlayer) {
+  const turnOrder = getSeatTurnOrder(matchState);
+  const startIndex = turnOrder.indexOf(currentPlayer);
+  if (startIndex === -1) {
+    throw new Error(`Current player is not in turnOrder: ${currentPlayer}`);
+  }
+
+  for (let offset = 1; offset <= turnOrder.length; offset += 1) {
+    const next = turnOrder[(startIndex + offset) % turnOrder.length];
+    if (!matchState.eliminatedPlayers.has(next)) {
+      return next;
+    }
+  }
+
+  return null;
+}
+
+function getDuelNoMoveResolution(matchState, occupancyMap, player) {
+  const inCheck = isPlayerKingUnderThreat(matchState, occupancyMap, player);
+  const remainingOpponents = getRemainingPlayers(matchState).filter((candidate) => candidate !== player);
+
+  return {
+    resultType: inCheck ? "checkmate" : "stalemate",
+    winner: inCheck ? (remainingOpponents[0] ?? null) : null,
+  };
+}
+
+function updateDuelEnPassantTarget(matchState, piece, move) {
+  matchState.enPassantTarget = null;
+  if (!isDuelMatch(matchState) || piece.type !== PIECE_TYPES.Pawn) {
+    return;
+  }
+
+  const forward = piece.forward;
+  if (!forward || forward.x !== 0 || forward.y !== 0 || forward.z === 0) {
+    return;
+  }
+
+  const deltaZ = Number(move.to?.z ?? piece.coord.z) - Number(move.from?.z ?? piece.coord.z);
+  if (Math.abs(deltaZ) !== 2 || Number(move.to?.x ?? piece.coord.x) !== piece.coord.x || Number(move.to?.y ?? piece.coord.y) !== piece.coord.y) {
+    return;
+  }
+
+  const passedThroughSquare = {
+    x: piece.coord.x,
+    y: piece.coord.y,
+    z: piece.coord.z - forward.z,
+  };
+
+  matchState.enPassantTarget = {
+    vulnerablePawnId: piece.id,
+    captureSquare: { ...piece.coord.toJSON() },
+    passedThroughSquare,
+    eligiblePlayer: getNextActivePlayer(matchState, piece.owner),
+    expiresAfterTurn: matchState.turnCount + 1,
+  };
+}
+
+function clearExpiredEnPassantTarget(matchState) {
+  const target = matchState.enPassantTarget;
+  if (!target) {
+    return;
+  }
+  if ((target.expiresAfterTurn ?? Number.POSITIVE_INFINITY) < matchState.turnCount) {
+    matchState.enPassantTarget = null;
+  }
+}
+
+function incrementDuelRepetitionCount(matchState) {
+  if (!isDuelMatch(matchState)) {
+    return 0;
+  }
+  const key = buildDuelRepetitionStateKey(matchState);
+  const next = (Number(matchState.repetitionCounts?.[key] ?? 0) || 0) + 1;
+  matchState.repetitionCounts = {
+    ...(matchState.repetitionCounts ?? {}),
+    [key]: next,
+  };
+  return next;
+}
+
+function updateDuelNoProgressClock(matchState, piece, capturedPiece) {
+  if (!isDuelMatch(matchState)) {
+    return;
+  }
+  const resetsClock = piece.type === PIECE_TYPES.Pawn || Boolean(capturedPiece);
+  matchState.noProgressHalfmoveClock = resetsClock
+    ? 0
+    : (Math.max(0, Number(matchState.noProgressHalfmoveClock ?? 0) || 0) + 1);
+}
+
+function getCurrentDuelRepetitionCount(matchState) {
+  if (!isDuelMatch(matchState)) {
+    return 0;
+  }
+  return Number(matchState.repetitionCounts?.[buildDuelRepetitionStateKey(matchState)] ?? 0) || 0;
+}
+
+export function applyValidatedMove(matchState, occupancyMap, move) {
+  const piece = findAlivePieceById(matchState, move.pieceId);
+  if (!piece) {
+    throw new Error(`Cannot apply move for missing alive piece: ${move.pieceId}`);
+  }
+
+  const destination = Coord3.from(move.to);
+  const isEnPassant = move.special === "en_passant";
+  const captureSquare = isEnPassant ? Coord3.from(move.captureSquare ?? move.to) : destination;
+  const target = occupancyMap.tryGetPieceAt(captureSquare);
+  let capturedPiece = null;
+
+  if (target && target.owner === piece.owner) {
+    throw new Error("Cannot capture friendly piece");
+  }
+
+  if (target) {
+    capturedPiece = target;
+    capturedPiece.alive = false;
+    occupancyMap.remove(capturedPiece.id);
+  } else if (isEnPassant) {
+    throw new Error("En passant capture target is missing");
+  }
+
+  const moved = occupancyMap.move(piece, destination);
+  if (!moved) {
+    throw new Error(`Destination occupied while applying move for ${move.pieceId}`);
+  }
+
+  let rookMove = null;
+  if (move.special === "castle" && move.rookMove) {
+    const rook = findAlivePieceById(matchState, move.rookMove.pieceId);
+    rookMove = {
+      pieceId: rook.id,
+      from: Coord3.from(move.rookMove.from).toJSON(),
+      to: Coord3.from(move.rookMove.to).toJSON(),
+    };
+    const rookMoved = occupancyMap.move(rook, Coord3.from(move.rookMove.to));
+    if (!rookMoved) {
+      throw new Error(`Castling rook relocation failed for ${rook.id}`);
+    }
+    rook.hasMoved = true;
+  }
+
+  piece.hasMoved = true;
+
+  if (piece.type === PIECE_TYPES.Pawn) {
+    const forwardX = piece.forward?.x ?? 0;
+    const forwardY = piece.forward?.y ?? 0;
+    const forwardZ = piece.forward?.z ?? 0;
+    const reachedPromotionRank = forwardX > 0
+      ? piece.coord.x === 7
+      : forwardX < 0
+        ? piece.coord.x === 0
+        : forwardY > 0
+          ? piece.coord.y === 7
+          : forwardY < 0
+            ? piece.coord.y === 0
+            : forwardZ > 0
+              ? piece.coord.z === 7
+              : piece.coord.z === 0;
+    if (reachedPromotionRank) {
+      piece.type = PIECE_TYPES.Queen;
+      piece.forward = null;
+    }
+  }
+
+  updateDuelEnPassantTarget(matchState, piece, move);
+  updateDuelNoProgressClock(matchState, piece, capturedPiece);
+
+  let eliminatedPlayer = null;
+  if (capturedPiece && capturedPiece.type === PIECE_TYPES.King) {
+    eliminatedPlayer = capturedPiece.owner;
+    eliminatePlayer(matchState, occupancyMap, eliminatedPlayer);
+  }
+
+  const committedMove = {
+    pieceId: move.pieceId,
+    from: move.from,
+    to: move.to,
+    isCapture: Boolean(capturedPiece),
+    capturedPieceId: capturedPiece ? capturedPiece.id : null,
+    special: move.special ?? null,
+    rookMove,
+    captureSquare: isEnPassant ? captureSquare.toJSON() : null,
+  };
+
+  matchState.lastMove = committedMove;
+
+  return {
+    move: committedMove,
+    capturedPieceId: committedMove.capturedPieceId,
+    eliminatedPlayer,
+  };
+}
+
+export class TurnStateMachine {
+  constructor({ matchState, occupancyMap, seatConfig, aiBudgetMs = 10_000 }) {
+    this.matchState = matchState;
+    this.occupancyMap = occupancyMap;
+    this.seatConfig = seatConfig;
+    this.aiBudgetMs = aiBudgetMs;
+    this.phase = TurnPhase.Idle;
+    this.pendingTurn = null;
+    this.winner = null;
+    this.resultType = matchState.resultType ?? null;
+
+    if (isDuelMatch(this.matchState) && (!this.matchState.repetitionCounts || Object.keys(this.matchState.repetitionCounts).length === 0)) {
+      incrementDuelRepetitionCount(this.matchState);
+    }
+    this.#reconcileMatchStatus();
+  }
+
+  #transition(toPhase) {
+    const allowed = ALLOWED_TRANSITIONS[this.phase];
+    if (!allowed.has(toPhase)) {
+      throw new Error(`Invalid turn state transition: ${this.phase} -> ${toPhase}`);
+    }
+    this.phase = toPhase;
+  }
+
+  #reconcileMatchStatus() {
+    synchronizeEliminations(this.matchState, this.occupancyMap);
+    const naturalWinner = getWinner(this.matchState);
+    if (naturalWinner) {
+      this.winner = naturalWinner;
+      this.resultType = this.resultType ?? "victory";
+      this.matchState.resultType = this.resultType;
+      if (this.phase !== TurnPhase.MatchEnded) {
+        this.phase = TurnPhase.MatchEnded;
+      }
+      return;
+    }
+
+    if (this.phase === TurnPhase.MatchEnded) {
+      this.matchState.resultType = this.resultType;
+      return;
+    }
+
+    this.winner = null;
+    this.resultType = null;
+    this.matchState.resultType = null;
+    clearExpiredEnPassantTarget(this.matchState);
+
+    if (isDuelMatch(this.matchState)) {
+      if ((Number(this.matchState.noProgressHalfmoveClock ?? 0) || 0) >= DUEL_NO_PROGRESS_HALFMOVE_LIMIT) {
+        this.winner = null;
+        this.resultType = "draw_no_progress";
+        this.matchState.resultType = this.resultType;
+        this.phase = TurnPhase.MatchEnded;
+        return;
+      }
+
+      const currentRepetitionCount = getCurrentDuelRepetitionCount(this.matchState);
+      if (currentRepetitionCount >= DUEL_REPETITION_DRAW_COUNT) {
+        this.winner = null;
+        this.resultType = "draw_repetition";
+        this.matchState.resultType = this.resultType;
+        this.phase = TurnPhase.MatchEnded;
+        return;
+      }
+    }
+
+    if (this.matchState.eliminatedPlayers.has(this.matchState.activePlayer)) {
+      const next = getNextActivePlayer(this.matchState, this.matchState.activePlayer);
+      if (next) {
+        this.matchState.activePlayer = next;
+      }
+    }
+  }
+
+  beginTurn() {
+    if (this.phase === TurnPhase.MatchEnded) {
+      return { type: "MatchEnded", winner: this.winner, resultType: this.resultType };
+    }
+    if (this.phase !== TurnPhase.Idle) {
+      throw new Error(`Cannot begin turn while in phase ${this.phase}`);
+    }
+
+    this.#reconcileMatchStatus();
+    if (this.phase === TurnPhase.MatchEnded) {
+      return { type: "MatchEnded", winner: this.winner, resultType: this.resultType };
+    }
+
+    const player = this.matchState.activePlayer;
+    const legalMoves = collectLegalMovesForPlayer(this.matchState, this.occupancyMap, player);
+
+    if (legalMoves.length === 0) {
+      if (isDuelMatch(this.matchState)) {
+        const duelResolution = getDuelNoMoveResolution(this.matchState, this.occupancyMap, player);
+        this.pendingTurn = null;
+        this.matchState.lastMove = null;
+        this.winner = duelResolution.winner;
+        this.resultType = duelResolution.resultType;
+        this.matchState.resultType = duelResolution.resultType;
+        this.#transition(TurnPhase.MatchEnded);
+        return {
+          type: "MatchEnded",
+          player,
+          winner: this.winner,
+          resultType: this.resultType,
+          legalMoves: [],
+        };
+      }
+
+      this.#transition(TurnPhase.ResolvingMove);
+      const result = this.#resolvePassTurn(player);
+      return { ...result, legalMoves: [] };
+    }
+
+    const controllerType = getControllerTypeForPlayer(this.seatConfig, player);
+    if (controllerType !== ControllerType.Human && controllerType !== ControllerType.AI) {
+      throw new Error(`No controller configured for player ${player}`);
+    }
+
+    this.pendingTurn = {
+      player,
+      legalMoves,
+      fallbackMove: legalMoves[0],
+      controllerType,
+    };
+
+    if (controllerType === ControllerType.Human) {
+      this.#transition(TurnPhase.AwaitingHumanMove);
+      return {
+        type: TurnPhase.AwaitingHumanMove,
+        player,
+        controllerType,
+        legalMoves,
+      };
+    }
+
+    this.#transition(TurnPhase.AwaitingAIMove);
+    return {
+      type: TurnPhase.AwaitingAIMove,
+      player,
+      controllerType,
+      legalMoves,
+      budgetMs: this.aiBudgetMs,
+    };
+  }
+
+  submitHumanMove({ player, move }) {
+    if (this.phase !== TurnPhase.AwaitingHumanMove) {
+      throw new Error("Human move submission is only valid during AwaitingHumanMove");
+    }
+    if (!this.pendingTurn) {
+      throw new Error("Missing pending turn context for human move");
+    }
+    if (player !== this.pendingTurn.player) {
+      throw new Error(`Out-of-turn human input rejected for player ${player}`);
+    }
+
+    const legalMove = findLegalMoveMatch(this.pendingTurn.legalMoves, move);
+    if (!legalMove) {
+      throw new Error("Submitted human move is not legal for active turn");
+    }
+
+    this.#transition(TurnPhase.ResolvingMove);
+    return this.#resolveCommittedMove({ move: legalMove, controllerType: ControllerType.Human, timedOut: false });
+  }
+
+  async resolveAITurn({ requestMove, budgetMs = this.aiBudgetMs } = {}) {
+    if (this.phase !== TurnPhase.AwaitingAIMove) {
+      throw new Error("AI resolution is only valid during AwaitingAIMove");
+    }
+    if (!this.pendingTurn) {
+      throw new Error("Missing pending turn context for AI move");
+    }
+
+    const pending = this.pendingTurn;
+    const aiResult = await runAITurn({
+      budgetMs,
+      fallbackMove: pending.fallbackMove,
+      requestMove: ({ budgetMs: innerBudgetMs, signal }) => {
+        if (!requestMove) {
+          return null;
+        }
+        return requestMove({
+          matchState: this.matchState,
+          occupancyMap: this.occupancyMap,
+          player: pending.player,
+          legalMoves: pending.legalMoves,
+          budgetMs: innerBudgetMs,
+          signal,
+        });
+      },
+    });
+
+    const legalMove = findLegalMoveMatch(pending.legalMoves, aiResult.move) ?? pending.fallbackMove;
+
+    this.#transition(TurnPhase.ResolvingMove);
+    return this.#resolveCommittedMove({
+      move: legalMove,
+      controllerType: ControllerType.AI,
+      timedOut: aiResult.timedOut,
+    });
+  }
+
+  #resolvePassTurn(player) {
+    this.pendingTurn = null;
+    this.matchState.lastMove = null;
+    this.matchState.turnCount += 1;
+
+    this.#reconcileMatchStatus();
+    if (this.phase === TurnPhase.MatchEnded) {
+      return {
+        type: "MatchEnded",
+        player,
+        winner: this.winner,
+        resultType: this.resultType,
+        passed: true,
+      };
+    }
+
+    const nextPlayer = getNextActivePlayer(this.matchState, player);
+    if (!nextPlayer) {
+      this.#transition(TurnPhase.MatchEnded);
+      return {
+        type: "MatchEnded",
+        player,
+        winner: this.winner,
+        resultType: this.resultType,
+        passed: true,
+      };
+    }
+
+    this.matchState.activePlayer = nextPlayer;
+    if (isDuelMatch(this.matchState)) {
+      incrementDuelRepetitionCount(this.matchState);
+      this.#reconcileMatchStatus();
+      if (this.phase === TurnPhase.MatchEnded) {
+        return {
+          type: "MatchEnded",
+          player,
+          winner: this.winner,
+          resultType: this.resultType,
+          passed: true,
+        };
+      }
+    }
+    this.#transition(TurnPhase.Idle);
+
+    return {
+      type: "TurnPassed",
+      player,
+      passed: true,
+      nextPlayer,
+    };
+  }
+
+  #resolveCommittedMove({ move, controllerType, timedOut }) {
+    const activePlayer = this.pendingTurn.player;
+    const applied = applyValidatedMove(this.matchState, this.occupancyMap, move);
+
+    this.pendingTurn = null;
+    this.matchState.turnCount += 1;
+
+    this.#reconcileMatchStatus();
+    if (this.phase === TurnPhase.MatchEnded) {
+      return {
+        type: "MatchEnded",
+        player: activePlayer,
+        controllerType,
+        timedOut,
+        move: applied.move,
+        eliminatedPlayer: applied.eliminatedPlayer,
+        winner: this.winner,
+        resultType: this.resultType,
+      };
+    }
+
+    const nextPlayer = getNextActivePlayer(this.matchState, activePlayer);
+    if (!nextPlayer) {
+      this.#transition(TurnPhase.MatchEnded);
+      return {
+        type: "MatchEnded",
+        player: activePlayer,
+        controllerType,
+        timedOut,
+        move: applied.move,
+        eliminatedPlayer: applied.eliminatedPlayer,
+        winner: this.winner,
+        resultType: this.resultType,
+      };
+    }
+
+    this.matchState.activePlayer = nextPlayer;
+    if (isDuelMatch(this.matchState)) {
+      incrementDuelRepetitionCount(this.matchState);
+      this.#reconcileMatchStatus();
+      if (this.phase === TurnPhase.MatchEnded) {
+        return {
+          type: "MatchEnded",
+          player: activePlayer,
+          controllerType,
+          timedOut,
+          move: applied.move,
+          eliminatedPlayer: applied.eliminatedPlayer,
+          winner: this.winner,
+          resultType: this.resultType,
+        };
+      }
+    }
+    this.#transition(TurnPhase.Idle);
+
+    return {
+      type: "TurnResolved",
+      player: activePlayer,
+      controllerType,
+      timedOut,
+      move: applied.move,
+      eliminatedPlayer: applied.eliminatedPlayer,
+      nextPlayer,
+    };
+  }
+}
